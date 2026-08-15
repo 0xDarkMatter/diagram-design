@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seventy years of longer lives</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper: #f5f5f5;   --color-paper-2: #ececec;
+      --color-ink: #2d3142;     --color-muted: #4f5d75;
+      --color-soft: #7a8399;    --color-rule: rgba(45,49,66,0.12);
+      --color-rule-solid: #bfc0c0;
+      --color-accent: #eb6c36;  --color-accent-tint: rgba(235,108,54,0.08);
+      --color-link: #2e5aa8;    --color-surface: #ffffff;
+      --color-shadow: rgba(45,49,66,0.14);   /* ink-derived */
+      --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    html[data-theme="dark"] {
+      --color-paper: #2d3142;   --color-paper-2: #393e53;
+      --color-ink: #f5f5f5;     --color-muted: #bfc0c0;
+      --color-soft: #8e98ac;    --color-rule: rgba(245,245,245,0.12);
+      --color-rule-solid: rgba(191,192,192,0.25);
+      --color-accent: #f08a59;  --color-accent-tint: rgba(240,138,89,0.10);
+      --color-link: #6a95d8;    --color-surface: #393e53;
+      --color-shadow: rgba(45,49,66,0);      /* no blur on dark - the border carries the edge */
+    }
+    body { font-family: var(--font-sans); background: var(--color-paper);
+           color: var(--color-ink); min-height: 100vh; display: flex;
+           align-items: center; justify-content: center; padding: 3rem 2rem;
+           transition: background 220ms var(--ease-out); }
+    .frame { max-width: 1200px; width: 100%; position: relative; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+               letter-spacing: 0.18em; text-transform: uppercase;
+               color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+         font-weight: 400; letter-spacing: -0.02em; line-height: 1.15;
+         color: var(--color-ink); margin-bottom: 0.25rem; }
+    .standfirst { font-size: 0.875rem; color: var(--color-muted);
+                  margin-bottom: 1.5rem; max-width: 68ch; }
+    .theme-toggle { position: absolute; top: 0; right: 0;
+      font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+      letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-muted);
+      background: transparent; border: 1px solid var(--color-rule-solid);
+      border-radius: 4px; padding: 0.375rem 0.75rem; cursor: pointer;
+      transition: color 140ms var(--ease-out); }
+    .theme-toggle:hover { color: var(--color-ink); }
+    svg { width: 100%; min-width: 900px; display: block; }
+    text.name  { font-family: var(--font-sans); font-weight: 600; }
+    text.serif { font-family: var(--font-serif); }
+    text.sub, text.axis-label { font-family: var(--font-mono); }
+    .mask { fill: var(--color-paper); }
+    .name { fill: var(--color-ink); }
+    .sub  { fill: var(--color-muted); }
+    .faint { fill: var(--color-soft); }
+    .grid { stroke: var(--color-rule); }
+    .axis { stroke: var(--color-soft); }
+    .cell       { fill: var(--color-ink); }
+    .cell-focal { fill: var(--color-accent); }
+    .cell-label { fill: var(--color-paper); font-family: var(--font-sans); font-weight: 600; }
+    .cell-sub   { fill: var(--color-paper); font-family: var(--font-mono); opacity: 0.72; }
+    .ribbon       { fill: var(--color-muted); opacity: 0.18; }
+    .ribbon-focal { fill: var(--color-accent); opacity: 0.35; }
+    .bar-node   { fill: var(--color-ink); }
+    .slope      { stroke: var(--color-muted); }
+    .slope-focal{ stroke: var(--color-accent); }
+    .dot        { fill: var(--color-ink); }
+    .dot-hollow { fill: var(--color-paper); stroke: var(--color-ink); }
+    .dot-accent { fill: var(--color-accent); }
+    .dot-accent-hollow { fill: var(--color-paper); stroke: var(--color-accent); }
+    .range      { stroke: var(--color-rule-solid); }
+    [data-tip] { cursor: default; outline: none;
+      transition: fill 140ms var(--ease-out), stroke 140ms var(--ease-out),
+                  opacity 140ms var(--ease-out), filter 140ms var(--ease-out); }
+    /* Hover paints the mark ACCENT - emphasis and interaction share one
+       vocabulary. Translucent marks also lift their composited opacity via
+       the builder-stamped --o (fill swaps and filters alone move a
+       12%-opacity mark by ~2 RGB points - measured). */
+    [data-tip]:hover, [data-tip]:focus-visible {
+      fill: var(--color-accent);
+      opacity: clamp(0.4, calc(var(--o, 1) * 2.4), 1);
+    }
+    /* Line-form marks (fill="none") recolor their stroke - an accent FILL
+       would blob an arc or slope into a shape. */
+    [data-tip][fill="none"]:hover, [data-tip][fill="none"]:focus-visible,
+    line[data-tip]:hover, line[data-tip]:focus-visible {
+      fill: none; stroke: var(--color-accent);
+    }
+    /* Marks that are ALREADY accent (the focal element) respond by darkening
+       on light / lifting on dark, so nothing sits inert under the cursor. */
+    .cell-focal[data-tip]:hover, .dot-accent[data-tip]:hover,
+    .ribbon-focal[data-tip]:hover, .slope-focal[data-tip]:hover,
+    .cell-focal[data-tip]:focus-visible, .dot-accent[data-tip]:focus-visible {
+      filter: brightness(0.85);
+    }
+    html[data-theme="dark"] .cell-focal[data-tip]:hover,
+    html[data-theme="dark"] .dot-accent[data-tip]:hover {
+      filter: brightness(1.2);
+    }
+    /* Warming-stripes exemption: a cold year must never turn warm-orange
+       under the cursor - it keeps its pole and lifts opacity instead. */
+    .cell-cold[data-tip]:hover, .cell-cold[data-tip]:focus-visible {
+      fill: var(--color-link);
+    }
+    [data-tip]:focus-visible { outline: 2px solid var(--color-link); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { [data-tip] { transition: none; } }
+    .dd-tooltip {
+      position: fixed; z-index: 10; max-width: 264px; pointer-events: none;
+      background: var(--color-surface); color: var(--color-ink);
+      border: 1px solid var(--color-rule-solid); border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      box-shadow: 0 1px 0 var(--color-rule), 0 6px 16px var(--color-shadow);
+      opacity: 0; transform: translateY(2px);
+      transition: opacity 140ms var(--ease-out), transform 140ms var(--ease-out);
+      font-family: var(--font-sans); font-size: 0.75rem; line-height: 1.45;
+    }
+    .dd-tooltip.dd-show { opacity: 1; transform: none; }
+    .dd-tooltip .dd-label { font-size: 0.6rem; font-weight: 600;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--color-soft); margin-bottom: 0.25rem; font-family: var(--font-mono); }
+    .dd-tooltip .dd-line { color: var(--color-muted); }
+    .dd-tooltip .dd-line strong { color: var(--color-ink); font-weight: 600; }
+    .dd-tooltip .dd-line code { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-ink); }
+    @media (prefers-reduced-motion: reduce) { .dd-tooltip { transition: none; transform: none; } }
+  </style>
+  <script data-theme-controls>
+    (function () {
+      var q = new URLSearchParams(location.search).get('theme');
+      var sys = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      var pref = null; try { pref = localStorage.getItem('dd-theme'); } catch (e) {}
+      document.documentElement.dataset.theme = (q === 'dark' || q === 'light') ? q : (pref || sys);
+    })();
+    addEventListener('DOMContentLoaded', function () {
+      var b = document.querySelector('.theme-toggle');
+      var label = function () { b.textContent =
+        document.documentElement.dataset.theme === 'dark' ? 'Light' : 'Dark'; };
+      b.addEventListener('click', function () {
+        var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('dd-theme', next); } catch (e) {}
+        label();
+      });
+      label();
+      var tip = document.createElement('div');
+      tip.className = 'dd-tooltip'; tip.id = 'dd-tooltip';
+      tip.setAttribute('role', 'tooltip');
+      document.body.appendChild(tip);
+      var esc = function (s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+      var fmt = function (s) { return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*([^*]+)\*/g,'<strong>$1</strong>'); };
+      var show = function (el) {
+        var lines = (el.getAttribute('data-tip') || '').split('|');
+        var lab = el.getAttribute('data-tip-label');
+        var html = lab ? '<div class="dd-label">' + esc(lab) + '</div>' : '';
+        for (var i = 0; i < lines.length; i++) html += '<div class="dd-line">' + fmt(lines[i]) + '</div>';
+        tip.innerHTML = html;
+        el.setAttribute('aria-describedby', 'dd-tooltip');
+        var r = el.getBoundingClientRect();
+        tip.classList.add('dd-show');
+        var x = Math.min(Math.max(8, r.left + r.width/2 - tip.offsetWidth/2), innerWidth - tip.offsetWidth - 8);
+        var y = r.top - tip.offsetHeight - 10;
+        if (y < 8) y = r.bottom + 10;
+        tip.style.left = x + 'px'; tip.style.top = y + 'px';
+      };
+      var hide = function (el) { tip.classList.remove('dd-show'); if (el) el.removeAttribute('aria-describedby'); };
+      var ts = document.querySelectorAll('[data-tip]');
+      for (var i = 0; i < ts.length; i++) {
+        var el = ts[i];
+        if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+        el.addEventListener('pointerenter', function () { show(this); });
+        el.addEventListener('pointerleave', function () { hide(this); });
+        el.addEventListener('focus', function () { show(this); });
+        el.addEventListener('blur', function () { hide(this); });
+      }
+      addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(document.activeElement); });
+      addEventListener('scroll', function () { hide(); }, true);
+    });
+  </script>
+</head>
+<body>
+  <div class="frame">
+    <button class="theme-toggle" type="button" aria-label="Switch color theme">Dark</button>
+    <p class="eyebrow">Slopegraph · life expectancy</p>
+    <h1>Seventy years of longer lives</h1>
+    <p class="standfirst">Every region on Earth, 1950 against 2023. Asia gains thirty-one years - the steepest climb in human history - and the world line crosses from 47 to 73.</p>
+    <svg viewBox="0 0 1000 616" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="life-expectancy-slope-title life-expectancy-slope-desc">
+      <title id="life-expectancy-slope-title">Seventy years of longer lives</title>
+      <desc id="life-expectancy-slope-desc">Slopegraph of life expectancy by world region comparing 1950 with 2023; every region rises, Asia most steeply.</desc>
+      <rect class="mask" width="100%" height="100%"/>
+      <line class="axis" x1="320" y1="40" x2="320" y2="520" stroke-width="1"/>
+      <text class="sub" x="320" y="548" font-size="9" text-anchor="middle" letter-spacing="0.14em">1950</text>
+      <line class="axis" x1="680" y1="40" x2="680" y2="520" stroke-width="1"/>
+      <text class="sub" x="680" y="548" font-size="9" text-anchor="middle" letter-spacing="0.14em">2023</text>
+      <line class="slope" x1="320" y1="151" x2="680" y2="45" stroke-width="1.2"/>
+      <circle class="dot" cx="320" cy="151" r="4" data-tip-label="Oceania" data-tip="*62 → 79 years*|+18 years in three generations"/>
+      <circle class="dot" cx="680" cy="45" r="4" data-tip-label="Oceania" data-tip="*62 → 79 years*|+18 years in three generations"/>
+      <text class="sub" x="304" y="169" font-size="11" text-anchor="end">Oceania  62</text>
+      <text class="sub" x="696" y="49" font-size="11">79  Oceania</text>
+      <line class="slope" x1="320" y1="148" x2="680" y2="46" stroke-width="1.2"/>
+      <circle class="dot" cx="320" cy="148" r="4" data-tip-label="Europe" data-tip="*62 → 79 years*|+17 years in three generations"/>
+      <circle class="dot" cx="680" cy="46" r="4" data-tip-label="Europe" data-tip="*62 → 79 years*|+17 years in three generations"/>
+      <text class="sub" x="304" y="152" font-size="11" text-anchor="end">Europe  62</text>
+      <text class="sub" x="696" y="66" font-size="11">79  Europe</text>
+      <line class="slope" x1="320" y1="268" x2="680" y2="73" stroke-width="1.2"/>
+      <circle class="dot" cx="320" cy="268" r="4" data-tip-label="Asia" data-tip="*42 → 75 years*|+33 years in three generations"/>
+      <circle class="dot" cx="680" cy="73" r="4" data-tip-label="Asia" data-tip="*42 → 75 years*|+33 years in three generations"/>
+      <text class="sub" x="304" y="272" font-size="11" text-anchor="end">Asia  42</text>
+      <text class="sub" x="696" y="83" font-size="11">75  Asia</text>
+      <line class="slope-focal" x1="320" y1="242" x2="680" y2="81" stroke-width="2"/>
+      <circle class="dot-accent" cx="320" cy="242" r="4" data-tip-label="World" data-tip="*46 → 73 years*|+27 years in three generations"/>
+      <circle class="dot-accent" cx="680" cy="81" r="4" data-tip-label="World" data-tip="*46 → 73 years*|+27 years in three generations"/>
+      <text class="name" x="304" y="246" font-size="11" text-anchor="end">World  46</text>
+      <text class="name" x="696" y="100" font-size="11">73  World</text>
+      <line class="slope" x1="320" y1="297" x2="680" y2="137" stroke-width="1.2"/>
+      <circle class="dot" cx="320" cy="297" r="4" data-tip-label="Africa" data-tip="*37 → 64 years*|+27 years in three generations"/>
+      <circle class="dot" cx="680" cy="137" r="4" data-tip-label="Africa" data-tip="*37 → 64 years*|+27 years in three generations"/>
+      <text class="sub" x="304" y="301" font-size="11" text-anchor="end">Africa  37</text>
+      <text class="sub" x="696" y="141" font-size="11">64  Africa</text>
+      <text class="sub" x="60" y="592" font-size="8" letter-spacing="0.06em">LIFE EXPECTANCY AT BIRTH, YEARS · OUR WORLD IN DATA (UN WPP), 1950 AND 2023 · EVERY REGION GAINED AT LEAST 16 YEARS</text>
+    </svg>
+  </div>
+</body>
+</html>

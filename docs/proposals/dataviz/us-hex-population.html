@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The United States, one hexagon per state</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper: #f5f5f5;   --color-paper-2: #ececec;
+      --color-ink: #2d3142;     --color-muted: #4f5d75;
+      --color-soft: #7a8399;    --color-rule: rgba(45,49,66,0.12);
+      --color-rule-solid: #bfc0c0;
+      --color-accent: #eb6c36;  --color-accent-tint: rgba(235,108,54,0.08);
+      --color-link: #2e5aa8;    --color-surface: #ffffff;
+      --color-shadow: rgba(45,49,66,0.14);   /* ink-derived */
+      --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    html[data-theme="dark"] {
+      --color-paper: #2d3142;   --color-paper-2: #393e53;
+      --color-ink: #f5f5f5;     --color-muted: #bfc0c0;
+      --color-soft: #8e98ac;    --color-rule: rgba(245,245,245,0.12);
+      --color-rule-solid: rgba(191,192,192,0.25);
+      --color-accent: #f08a59;  --color-accent-tint: rgba(240,138,89,0.10);
+      --color-link: #6a95d8;    --color-surface: #393e53;
+      --color-shadow: rgba(45,49,66,0);      /* no blur on dark - the border carries the edge */
+    }
+    body { font-family: var(--font-sans); background: var(--color-paper);
+           color: var(--color-ink); min-height: 100vh; display: flex;
+           align-items: center; justify-content: center; padding: 3rem 2rem;
+           transition: background 220ms var(--ease-out); }
+    .frame { max-width: 1200px; width: 100%; position: relative; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+               letter-spacing: 0.18em; text-transform: uppercase;
+               color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+         font-weight: 400; letter-spacing: -0.02em; line-height: 1.15;
+         color: var(--color-ink); margin-bottom: 0.25rem; }
+    .standfirst { font-size: 0.875rem; color: var(--color-muted);
+                  margin-bottom: 1.5rem; max-width: 68ch; }
+    .theme-toggle { position: absolute; top: 0; right: 0;
+      font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+      letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-muted);
+      background: transparent; border: 1px solid var(--color-rule-solid);
+      border-radius: 4px; padding: 0.375rem 0.75rem; cursor: pointer;
+      transition: color 140ms var(--ease-out); }
+    .theme-toggle:hover { color: var(--color-ink); }
+    svg { width: 100%; min-width: 900px; display: block; }
+    text.name  { font-family: var(--font-sans); font-weight: 600; }
+    text.serif { font-family: var(--font-serif); }
+    text.sub, text.axis-label { font-family: var(--font-mono); }
+    .mask { fill: var(--color-paper); }
+    .name { fill: var(--color-ink); }
+    .sub  { fill: var(--color-muted); }
+    .faint { fill: var(--color-soft); }
+    .grid { stroke: var(--color-rule); }
+    .axis { stroke: var(--color-soft); }
+    .cell       { fill: var(--color-ink); }
+    .cell-focal { fill: var(--color-accent); }
+    .cell-label { fill: var(--color-paper); font-family: var(--font-sans); font-weight: 600; }
+    .cell-sub   { fill: var(--color-paper); font-family: var(--font-mono); opacity: 0.72; }
+    .ribbon       { fill: var(--color-muted); opacity: 0.18; }
+    .ribbon-focal { fill: var(--color-accent); opacity: 0.35; }
+    .bar-node   { fill: var(--color-ink); }
+    .slope      { stroke: var(--color-muted); }
+    .slope-focal{ stroke: var(--color-accent); }
+    .dot        { fill: var(--color-ink); }
+    .dot-hollow { fill: var(--color-paper); stroke: var(--color-ink); }
+    .dot-accent { fill: var(--color-accent); }
+    .dot-accent-hollow { fill: var(--color-paper); stroke: var(--color-accent); }
+    .range      { stroke: var(--color-rule-solid); }
+    [data-tip] { cursor: default; outline: none;
+      transition: fill 140ms var(--ease-out), stroke 140ms var(--ease-out),
+                  opacity 140ms var(--ease-out), filter 140ms var(--ease-out); }
+    /* Hover paints the mark ACCENT - emphasis and interaction share one
+       vocabulary. Translucent marks also lift their composited opacity via
+       the builder-stamped --o (fill swaps and filters alone move a
+       12%-opacity mark by ~2 RGB points - measured). */
+    [data-tip]:hover, [data-tip]:focus-visible {
+      fill: var(--color-accent);
+      opacity: clamp(0.4, calc(var(--o, 1) * 2.4), 1);
+    }
+    /* Line-form marks (fill="none") recolor their stroke - an accent FILL
+       would blob an arc or slope into a shape. */
+    [data-tip][fill="none"]:hover, [data-tip][fill="none"]:focus-visible,
+    line[data-tip]:hover, line[data-tip]:focus-visible {
+      fill: none; stroke: var(--color-accent);
+    }
+    /* Marks that are ALREADY accent (the focal element) respond by darkening
+       on light / lifting on dark, so nothing sits inert under the cursor. */
+    .cell-focal[data-tip]:hover, .dot-accent[data-tip]:hover,
+    .ribbon-focal[data-tip]:hover, .slope-focal[data-tip]:hover,
+    .cell-focal[data-tip]:focus-visible, .dot-accent[data-tip]:focus-visible {
+      filter: brightness(0.85);
+    }
+    html[data-theme="dark"] .cell-focal[data-tip]:hover,
+    html[data-theme="dark"] .dot-accent[data-tip]:hover {
+      filter: brightness(1.2);
+    }
+    /* Warming-stripes exemption: a cold year must never turn warm-orange
+       under the cursor - it keeps its pole and lifts opacity instead. */
+    .cell-cold[data-tip]:hover, .cell-cold[data-tip]:focus-visible {
+      fill: var(--color-link);
+    }
+    [data-tip]:focus-visible { outline: 2px solid var(--color-link); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { [data-tip] { transition: none; } }
+    .dd-tooltip {
+      position: fixed; z-index: 10; max-width: 264px; pointer-events: none;
+      background: var(--color-surface); color: var(--color-ink);
+      border: 1px solid var(--color-rule-solid); border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      box-shadow: 0 1px 0 var(--color-rule), 0 6px 16px var(--color-shadow);
+      opacity: 0; transform: translateY(2px);
+      transition: opacity 140ms var(--ease-out), transform 140ms var(--ease-out);
+      font-family: var(--font-sans); font-size: 0.75rem; line-height: 1.45;
+    }
+    .dd-tooltip.dd-show { opacity: 1; transform: none; }
+    .dd-tooltip .dd-label { font-size: 0.6rem; font-weight: 600;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--color-soft); margin-bottom: 0.25rem; font-family: var(--font-mono); }
+    .dd-tooltip .dd-line { color: var(--color-muted); }
+    .dd-tooltip .dd-line strong { color: var(--color-ink); font-weight: 600; }
+    .dd-tooltip .dd-line code { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-ink); }
+    @media (prefers-reduced-motion: reduce) { .dd-tooltip { transition: none; transform: none; } }
+  </style>
+  <script data-theme-controls>
+    (function () {
+      var q = new URLSearchParams(location.search).get('theme');
+      var sys = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      var pref = null; try { pref = localStorage.getItem('dd-theme'); } catch (e) {}
+      document.documentElement.dataset.theme = (q === 'dark' || q === 'light') ? q : (pref || sys);
+    })();
+    addEventListener('DOMContentLoaded', function () {
+      var b = document.querySelector('.theme-toggle');
+      var label = function () { b.textContent =
+        document.documentElement.dataset.theme === 'dark' ? 'Light' : 'Dark'; };
+      b.addEventListener('click', function () {
+        var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('dd-theme', next); } catch (e) {}
+        label();
+      });
+      label();
+      var tip = document.createElement('div');
+      tip.className = 'dd-tooltip'; tip.id = 'dd-tooltip';
+      tip.setAttribute('role', 'tooltip');
+      document.body.appendChild(tip);
+      var esc = function (s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+      var fmt = function (s) { return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*([^*]+)\*/g,'<strong>$1</strong>'); };
+      var show = function (el) {
+        var lines = (el.getAttribute('data-tip') || '').split('|');
+        var lab = el.getAttribute('data-tip-label');
+        var html = lab ? '<div class="dd-label">' + esc(lab) + '</div>' : '';
+        for (var i = 0; i < lines.length; i++) html += '<div class="dd-line">' + fmt(lines[i]) + '</div>';
+        tip.innerHTML = html;
+        el.setAttribute('aria-describedby', 'dd-tooltip');
+        var r = el.getBoundingClientRect();
+        tip.classList.add('dd-show');
+        var x = Math.min(Math.max(8, r.left + r.width/2 - tip.offsetWidth/2), innerWidth - tip.offsetWidth - 8);
+        var y = r.top - tip.offsetHeight - 10;
+        if (y < 8) y = r.bottom + 10;
+        tip.style.left = x + 'px'; tip.style.top = y + 'px';
+      };
+      var hide = function (el) { tip.classList.remove('dd-show'); if (el) el.removeAttribute('aria-describedby'); };
+      var ts = document.querySelectorAll('[data-tip]');
+      for (var i = 0; i < ts.length; i++) {
+        var el = ts[i];
+        if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+        el.addEventListener('pointerenter', function () { show(this); });
+        el.addEventListener('pointerleave', function () { hide(this); });
+        el.addEventListener('focus', function () { show(this); });
+        el.addEventListener('blur', function () { hide(this); });
+      }
+      addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(document.activeElement); });
+      addEventListener('scroll', function () { hide(); }, true);
+    });
+  </script>
+</head>
+<body>
+  <div class="frame">
+    <button class="theme-toggle" type="button" aria-label="Switch color theme">Dark</button>
+    <p class="eyebrow">Hex tile map · cartogram</p>
+    <h1>The United States, one hexagon per state</h1>
+    <p class="standfirst">Fifty-two equal tiles - a choropleth would let Alaska shout and Rhode Island vanish. Here every state gets the same hexagon, placement approximates the neighbours, and only color carries the people. Hover any tile.</p>
+    <svg viewBox="0 0 1000 688" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="us-hex-population-title us-hex-population-desc">
+      <title id="us-hex-population-title">The United States, one hexagon per state</title>
+      <desc id="us-hex-population-desc">Hex tile cartogram of United States population by state plus DC and Puerto Rico, one equal hexagon each; California leads at 38.97 million.</desc>
+      <rect class="mask" width="100%" height="100%"/>
+      <path class="cell" d="M 96.0,98.0 L 128.9,117.0 L 128.9,155.0 L 96.0,174.0 L 63.1,155.0 L 63.1,117.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Alaska" data-tip="*0.73 million people* - 0.2% of the total|rank 49 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="96" y="135" font-size="12" text-anchor="middle">AK</text>
+      <text class="sub" x="96" y="149" font-size="7" text-anchor="middle">0.7</text>
+      <path class="cell" d="M 902.1,98.0 L 935.0,117.0 L 935.0,155.0 L 902.1,174.0 L 869.2,155.0 L 869.2,117.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Maine" data-tip="*1.40 million people* - 0.4% of the total|rank 42 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="902" y="135" font-size="12" text-anchor="middle">ME</text>
+      <text class="sub" x="902" y="149" font-size="7" text-anchor="middle">1.4</text>
+      <path class="cell" d="M 865.5,162.0 L 898.4,181.0 L 898.4,219.0 L 865.5,238.0 L 832.6,219.0 L 832.6,181.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Vermont" data-tip="*0.65 million people* - 0.2% of the total|rank 51 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="865" y="199" font-size="12" text-anchor="middle">VT</text>
+      <text class="sub" x="865" y="213" font-size="7" text-anchor="middle">0.7</text>
+      <path class="cell" d="M 938.7,162.0 L 971.7,181.0 L 971.7,219.0 L 938.7,238.0 L 905.8,219.0 L 905.8,181.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="New Hampshire" data-tip="*1.40 million people* - 0.4% of the total|rank 43 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="939" y="199" font-size="12" text-anchor="middle">NH</text>
+      <text class="sub" x="939" y="213" font-size="7" text-anchor="middle">1.4</text>
+      <path class="cell" d="M 169.3,226.0 L 202.2,245.0 L 202.2,283.0 L 169.3,302.0 L 136.4,283.0 L 136.4,245.0 Z" style="--o:0.2;opacity:var(--o)" data-tip-label="Washington" data-tip="*7.81 million people* - 2.3% of the total|rank 13 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="169" y="263" font-size="12" text-anchor="middle">WA</text>
+      <text class="sub" x="169" y="277" font-size="7" text-anchor="middle">7.8</text>
+      <path class="cell" d="M 242.6,226.0 L 275.5,245.0 L 275.5,283.0 L 242.6,302.0 L 209.7,283.0 L 209.7,245.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Idaho" data-tip="*1.96 million people* - 0.6% of the total|rank 39 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="243" y="263" font-size="12" text-anchor="middle">ID</text>
+      <text class="sub" x="243" y="277" font-size="7" text-anchor="middle">2.0</text>
+      <path class="cell" d="M 315.8,226.0 L 348.8,245.0 L 348.8,283.0 L 315.8,302.0 L 282.9,283.0 L 282.9,245.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Montana" data-tip="*1.13 million people* - 0.3% of the total|rank 44 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="316" y="263" font-size="12" text-anchor="middle">MT</text>
+      <text class="sub" x="316" y="277" font-size="7" text-anchor="middle">1.1</text>
+      <path class="cell" d="M 389.1,226.0 L 422.0,245.0 L 422.0,283.0 L 389.1,302.0 L 356.2,283.0 L 356.2,245.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="North Dakota" data-tip="*0.78 million people* - 0.2% of the total|rank 48 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="389" y="263" font-size="12" text-anchor="middle">ND</text>
+      <text class="sub" x="389" y="277" font-size="7" text-anchor="middle">0.8</text>
+      <path class="cell" d="M 462.4,226.0 L 495.3,245.0 L 495.3,283.0 L 462.4,302.0 L 429.5,283.0 L 429.5,245.0 Z" style="--o:0.15;opacity:var(--o)" data-tip-label="Minnesota" data-tip="*5.74 million people* - 1.7% of the total|rank 22 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="462" y="263" font-size="12" text-anchor="middle">MN</text>
+      <text class="sub" x="462" y="277" font-size="7" text-anchor="middle">5.7</text>
+      <path class="cell" d="M 535.7,226.0 L 568.6,245.0 L 568.6,283.0 L 535.7,302.0 L 502.8,283.0 L 502.8,245.0 Z" style="--o:0.15;opacity:var(--o)" data-tip-label="Wisconsin" data-tip="*5.91 million people* - 1.7% of the total|rank 20 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="536" y="263" font-size="12" text-anchor="middle">WI</text>
+      <text class="sub" x="536" y="277" font-size="7" text-anchor="middle">5.9</text>
+      <path class="cell" d="M 682.3,226.0 L 715.2,245.0 L 715.2,283.0 L 682.3,302.0 L 649.3,283.0 L 649.3,245.0 Z" style="--o:0.26;opacity:var(--o)" data-tip-label="Michigan" data-tip="*10.04 million people* - 3.0% of the total|rank 10 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="682" y="263" font-size="12" text-anchor="middle">MI</text>
+      <text class="sub" x="682" y="277" font-size="7" text-anchor="middle">10.0</text>
+      <path class="cell" d="M 755.5,226.0 L 788.4,245.0 L 788.4,283.0 L 755.5,302.0 L 722.6,283.0 L 722.6,245.0 Z" style="--o:0.5;opacity:var(--o)" data-tip-label="New York" data-tip="*19.57 million people* - 5.8% of the total|rank 4 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="756" y="263" font-size="12" text-anchor="middle">NY</text>
+      <text class="sub" x="756" y="277" font-size="7" text-anchor="middle">19.6</text>
+      <path class="cell" d="M 828.8,226.0 L 861.7,245.0 L 861.7,283.0 L 828.8,302.0 L 795.9,283.0 L 795.9,245.0 Z" style="--o:0.18;opacity:var(--o)" data-tip-label="Massachusetts" data-tip="*7.00 million people* - 2.1% of the total|rank 16 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="829" y="263" font-size="12" text-anchor="middle">MA</text>
+      <text class="sub" x="829" y="277" font-size="7" text-anchor="middle">7.0</text>
+      <path class="cell" d="M 902.1,226.0 L 935.0,245.0 L 935.0,283.0 L 902.1,302.0 L 869.2,283.0 L 869.2,245.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Rhode Island" data-tip="*1.10 million people* - 0.3% of the total|rank 45 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="902" y="263" font-size="12" text-anchor="middle">RI</text>
+      <text class="sub" x="902" y="277" font-size="7" text-anchor="middle">1.1</text>
+      <path class="cell" d="M 205.9,290.0 L 238.8,309.0 L 238.8,347.0 L 205.9,366.0 L 173.0,347.0 L 173.0,309.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Oregon" data-tip="*4.23 million people* - 1.3% of the total|rank 27 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="206" y="327" font-size="12" text-anchor="middle">OR</text>
+      <text class="sub" x="206" y="341" font-size="7" text-anchor="middle">4.2</text>
+      <path class="cell" d="M 279.2,290.0 L 312.1,309.0 L 312.1,347.0 L 279.2,366.0 L 246.3,347.0 L 246.3,309.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Nevada" data-tip="*3.19 million people* - 0.9% of the total|rank 33 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="279" y="327" font-size="12" text-anchor="middle">NV</text>
+      <text class="sub" x="279" y="341" font-size="7" text-anchor="middle">3.2</text>
+      <path class="cell" d="M 352.5,290.0 L 385.4,309.0 L 385.4,347.0 L 352.5,366.0 L 319.6,347.0 L 319.6,309.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Wyoming" data-tip="*0.58 million people* - 0.2% of the total|rank 52 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="352" y="327" font-size="12" text-anchor="middle">WY</text>
+      <text class="sub" x="352" y="341" font-size="7" text-anchor="middle">0.6</text>
+      <path class="cell" d="M 425.8,290.0 L 458.7,309.0 L 458.7,347.0 L 425.8,366.0 L 392.9,347.0 L 392.9,309.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="South Dakota" data-tip="*0.92 million people* - 0.3% of the total|rank 47 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="426" y="327" font-size="12" text-anchor="middle">SD</text>
+      <text class="sub" x="426" y="341" font-size="7" text-anchor="middle">0.9</text>
+      <path class="cell" d="M 499.1,290.0 L 532.0,309.0 L 532.0,347.0 L 499.1,366.0 L 466.1,347.0 L 466.1,309.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Iowa" data-tip="*3.21 million people* - 0.9% of the total|rank 31 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="499" y="327" font-size="12" text-anchor="middle">IA</text>
+      <text class="sub" x="499" y="341" font-size="7" text-anchor="middle">3.2</text>
+      <path class="cell" d="M 572.3,290.0 L 605.2,309.0 L 605.2,347.0 L 572.3,366.0 L 539.4,347.0 L 539.4,309.0 Z" style="--o:0.32;opacity:var(--o)" data-tip-label="Illinois" data-tip="*12.55 million people* - 3.7% of the total|rank 6 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="572" y="327" font-size="12" text-anchor="middle">IL</text>
+      <text class="sub" x="572" y="341" font-size="7" text-anchor="middle">12.6</text>
+      <path class="cell" d="M 645.6,290.0 L 678.5,309.0 L 678.5,347.0 L 645.6,366.0 L 612.7,347.0 L 612.7,309.0 Z" style="--o:0.18;opacity:var(--o)" data-tip-label="Indiana" data-tip="*6.86 million people* - 2.0% of the total|rank 17 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="646" y="327" font-size="12" text-anchor="middle">IN</text>
+      <text class="sub" x="646" y="341" font-size="7" text-anchor="middle">6.9</text>
+      <path class="cell" d="M 718.9,290.0 L 751.8,309.0 L 751.8,347.0 L 718.9,366.0 L 686.0,347.0 L 686.0,309.0 Z" style="--o:0.3;opacity:var(--o)" data-tip-label="Ohio" data-tip="*11.78 million people* - 3.5% of the total|rank 7 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="719" y="327" font-size="12" text-anchor="middle">OH</text>
+      <text class="sub" x="719" y="341" font-size="7" text-anchor="middle">11.8</text>
+      <path class="cell" d="M 792.2,290.0 L 825.1,309.0 L 825.1,347.0 L 792.2,366.0 L 759.3,347.0 L 759.3,309.0 Z" style="--o:0.33;opacity:var(--o)" data-tip-label="Pennsylvania" data-tip="*12.96 million people* - 3.8% of the total|rank 5 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="792" y="327" font-size="12" text-anchor="middle">PA</text>
+      <text class="sub" x="792" y="341" font-size="7" text-anchor="middle">13.0</text>
+      <path class="cell" d="M 865.5,290.0 L 898.4,309.0 L 898.4,347.0 L 865.5,366.0 L 832.6,347.0 L 832.6,309.0 Z" style="--o:0.24;opacity:var(--o)" data-tip-label="New Jersey" data-tip="*9.29 million people* - 2.7% of the total|rank 11 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="865" y="327" font-size="12" text-anchor="middle">NJ</text>
+      <text class="sub" x="865" y="341" font-size="7" text-anchor="middle">9.3</text>
+      <path class="cell" d="M 938.7,290.0 L 971.7,309.0 L 971.7,347.0 L 938.7,366.0 L 905.8,347.0 L 905.8,309.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Connecticut" data-tip="*3.62 million people* - 1.1% of the total|rank 29 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="939" y="327" font-size="12" text-anchor="middle">CT</text>
+      <text class="sub" x="939" y="341" font-size="7" text-anchor="middle">3.6</text>
+      <path class="cell-focal" d="M 169.3,354.0 L 202.2,373.0 L 202.2,411.0 L 169.3,430.0 L 136.4,411.0 L 136.4,373.0 Z" data-tip-label="California" data-tip="*38.97 million people* - 11.5% of the total|rank 1 of 52|equal tile - only color carries the value"/>
+      <text class="cell-label" x="169" y="391" font-size="12" text-anchor="middle">CA</text>
+      <text class="cell-sub" x="169" y="405" font-size="7" text-anchor="middle">39.0</text>
+      <path class="cell" d="M 242.6,354.0 L 275.5,373.0 L 275.5,411.0 L 242.6,430.0 L 209.7,411.0 L 209.7,373.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Utah" data-tip="*3.42 million people* - 1.0% of the total|rank 30 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="243" y="391" font-size="12" text-anchor="middle">UT</text>
+      <text class="sub" x="243" y="405" font-size="7" text-anchor="middle">3.4</text>
+      <path class="cell" d="M 315.8,354.0 L 348.8,373.0 L 348.8,411.0 L 315.8,430.0 L 282.9,411.0 L 282.9,373.0 Z" style="--o:0.15;opacity:var(--o)" data-tip-label="Colorado" data-tip="*5.88 million people* - 1.7% of the total|rank 21 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="316" y="391" font-size="12" text-anchor="middle">CO</text>
+      <text class="sub" x="316" y="405" font-size="7" text-anchor="middle">5.9</text>
+      <path class="cell" d="M 389.1,354.0 L 422.0,373.0 L 422.0,411.0 L 389.1,430.0 L 356.2,411.0 L 356.2,373.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Nebraska" data-tip="*1.98 million people* - 0.6% of the total|rank 38 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="389" y="391" font-size="12" text-anchor="middle">NE</text>
+      <text class="sub" x="389" y="405" font-size="7" text-anchor="middle">2.0</text>
+      <path class="cell" d="M 462.4,354.0 L 495.3,373.0 L 495.3,411.0 L 462.4,430.0 L 429.5,411.0 L 429.5,373.0 Z" style="--o:0.16;opacity:var(--o)" data-tip-label="Missouri" data-tip="*6.20 million people* - 1.8% of the total|rank 18 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="462" y="391" font-size="12" text-anchor="middle">MO</text>
+      <text class="sub" x="462" y="405" font-size="7" text-anchor="middle">6.2</text>
+      <path class="cell" d="M 535.7,354.0 L 568.6,373.0 L 568.6,411.0 L 535.7,430.0 L 502.8,411.0 L 502.8,373.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Kentucky" data-tip="*4.53 million people* - 1.3% of the total|rank 26 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="536" y="391" font-size="12" text-anchor="middle">KY</text>
+      <text class="sub" x="536" y="405" font-size="7" text-anchor="middle">4.5</text>
+      <path class="cell" d="M 609.0,354.0 L 641.9,373.0 L 641.9,411.0 L 609.0,430.0 L 576.1,411.0 L 576.1,373.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="West Virginia" data-tip="*1.77 million people* - 0.5% of the total|rank 40 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="609" y="391" font-size="12" text-anchor="middle">WV</text>
+      <text class="sub" x="609" y="405" font-size="7" text-anchor="middle">1.8</text>
+      <path class="cell" d="M 682.3,354.0 L 715.2,373.0 L 715.2,411.0 L 682.3,430.0 L 649.3,411.0 L 649.3,373.0 Z" style="--o:0.22;opacity:var(--o)" data-tip-label="Virginia" data-tip="*8.72 million people* - 2.6% of the total|rank 12 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="682" y="391" font-size="12" text-anchor="middle">VA</text>
+      <text class="sub" x="682" y="405" font-size="7" text-anchor="middle">8.7</text>
+      <path class="cell" d="M 755.5,354.0 L 788.4,373.0 L 788.4,411.0 L 755.5,430.0 L 722.6,411.0 L 722.6,373.0 Z" style="--o:0.16;opacity:var(--o)" data-tip-label="Maryland" data-tip="*6.18 million people* - 1.8% of the total|rank 19 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="756" y="391" font-size="12" text-anchor="middle">MD</text>
+      <text class="sub" x="756" y="405" font-size="7" text-anchor="middle">6.2</text>
+      <path class="cell" d="M 828.8,354.0 L 861.7,373.0 L 861.7,411.0 L 828.8,430.0 L 795.9,411.0 L 795.9,373.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Delaware" data-tip="*1.03 million people* - 0.3% of the total|rank 46 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="829" y="391" font-size="12" text-anchor="middle">DE</text>
+      <text class="sub" x="829" y="405" font-size="7" text-anchor="middle">1.0</text>
+      <path class="cell" d="M 279.2,418.0 L 312.1,437.0 L 312.1,475.0 L 279.2,494.0 L 246.3,475.0 L 246.3,437.0 Z" style="--o:0.19;opacity:var(--o)" data-tip-label="Arizona" data-tip="*7.43 million people* - 2.2% of the total|rank 14 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="279" y="455" font-size="12" text-anchor="middle">AZ</text>
+      <text class="sub" x="279" y="469" font-size="7" text-anchor="middle">7.4</text>
+      <path class="cell" d="M 352.5,418.0 L 385.4,437.0 L 385.4,475.0 L 352.5,494.0 L 319.6,475.0 L 319.6,437.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="New Mexico" data-tip="*2.11 million people* - 0.6% of the total|rank 37 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="352" y="455" font-size="12" text-anchor="middle">NM</text>
+      <text class="sub" x="352" y="469" font-size="7" text-anchor="middle">2.1</text>
+      <path class="cell" d="M 425.8,418.0 L 458.7,437.0 L 458.7,475.0 L 425.8,494.0 L 392.9,475.0 L 392.9,437.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Kansas" data-tip="*2.94 million people* - 0.9% of the total|rank 35 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="426" y="455" font-size="12" text-anchor="middle">KS</text>
+      <text class="sub" x="426" y="469" font-size="7" text-anchor="middle">2.9</text>
+      <path class="cell" d="M 499.1,418.0 L 532.0,437.0 L 532.0,475.0 L 499.1,494.0 L 466.1,475.0 L 466.1,437.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Arkansas" data-tip="*3.07 million people* - 0.9% of the total|rank 34 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="499" y="455" font-size="12" text-anchor="middle">AR</text>
+      <text class="sub" x="499" y="469" font-size="7" text-anchor="middle">3.1</text>
+      <path class="cell" d="M 572.3,418.0 L 605.2,437.0 L 605.2,475.0 L 572.3,494.0 L 539.4,475.0 L 539.4,437.0 Z" style="--o:0.18;opacity:var(--o)" data-tip-label="Tennessee" data-tip="*7.13 million people* - 2.1% of the total|rank 15 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="572" y="455" font-size="12" text-anchor="middle">TN</text>
+      <text class="sub" x="572" y="469" font-size="7" text-anchor="middle">7.1</text>
+      <path class="cell" d="M 645.6,418.0 L 678.5,437.0 L 678.5,475.0 L 645.6,494.0 L 612.7,475.0 L 612.7,437.0 Z" style="--o:0.28;opacity:var(--o)" data-tip-label="North Carolina" data-tip="*10.84 million people* - 3.2% of the total|rank 9 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="646" y="455" font-size="12" text-anchor="middle">NC</text>
+      <text class="sub" x="646" y="469" font-size="7" text-anchor="middle">10.8</text>
+      <path class="cell" d="M 718.9,418.0 L 751.8,437.0 L 751.8,475.0 L 718.9,494.0 L 686.0,475.0 L 686.0,437.0 Z" style="--o:0.14;opacity:var(--o)" data-tip-label="South Carolina" data-tip="*5.37 million people* - 1.6% of the total|rank 23 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="719" y="455" font-size="12" text-anchor="middle">SC</text>
+      <text class="sub" x="719" y="469" font-size="7" text-anchor="middle">5.4</text>
+      <path class="cell" d="M 792.2,418.0 L 825.1,437.0 L 825.1,475.0 L 792.2,494.0 L 759.3,475.0 L 759.3,437.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="District of Columbia" data-tip="*0.68 million people* - 0.2% of the total|rank 50 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="792" y="455" font-size="12" text-anchor="middle">DC</text>
+      <text class="sub" x="792" y="469" font-size="7" text-anchor="middle">0.7</text>
+      <path class="cell" d="M 389.1,482.0 L 422.0,501.0 L 422.0,539.0 L 389.1,558.0 L 356.2,539.0 L 356.2,501.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Oklahoma" data-tip="*4.05 million people* - 1.2% of the total|rank 28 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="389" y="519" font-size="12" text-anchor="middle">OK</text>
+      <text class="sub" x="389" y="533" font-size="7" text-anchor="middle">4.0</text>
+      <path class="cell" d="M 462.4,482.0 L 495.3,501.0 L 495.3,539.0 L 462.4,558.0 L 429.5,539.0 L 429.5,501.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Louisiana" data-tip="*4.57 million people* - 1.4% of the total|rank 25 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="462" y="519" font-size="12" text-anchor="middle">LA</text>
+      <text class="sub" x="462" y="533" font-size="7" text-anchor="middle">4.6</text>
+      <path class="cell" d="M 535.7,482.0 L 568.6,501.0 L 568.6,539.0 L 535.7,558.0 L 502.8,539.0 L 502.8,501.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Mississippi" data-tip="*2.94 million people* - 0.9% of the total|rank 36 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="536" y="519" font-size="12" text-anchor="middle">MS</text>
+      <text class="sub" x="536" y="533" font-size="7" text-anchor="middle">2.9</text>
+      <path class="cell" d="M 609.0,482.0 L 641.9,501.0 L 641.9,539.0 L 609.0,558.0 L 576.1,539.0 L 576.1,501.0 Z" style="--o:0.13;opacity:var(--o)" data-tip-label="Alabama" data-tip="*5.11 million people* - 1.5% of the total|rank 24 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="609" y="519" font-size="12" text-anchor="middle">AL</text>
+      <text class="sub" x="609" y="533" font-size="7" text-anchor="middle">5.1</text>
+      <path class="cell" d="M 682.3,482.0 L 715.2,501.0 L 715.2,539.0 L 682.3,558.0 L 649.3,539.0 L 649.3,501.0 Z" style="--o:0.28;opacity:var(--o)" data-tip-label="Georgia" data-tip="*11.03 million people* - 3.3% of the total|rank 8 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="682" y="519" font-size="12" text-anchor="middle">GA</text>
+      <text class="sub" x="682" y="533" font-size="7" text-anchor="middle">11.0</text>
+      <path class="cell" d="M 132.6,546.0 L 165.5,565.0 L 165.5,603.0 L 132.6,622.0 L 99.7,603.0 L 99.7,565.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Hawaii" data-tip="*1.44 million people* - 0.4% of the total|rank 41 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="133" y="583" font-size="12" text-anchor="middle">HI</text>
+      <text class="sub" x="133" y="597" font-size="7" text-anchor="middle">1.4</text>
+      <path class="cell" d="M 425.8,546.0 L 458.7,565.0 L 458.7,603.0 L 425.8,622.0 L 392.9,603.0 L 392.9,565.0 Z" style="--o:0.78;opacity:var(--o)" data-tip-label="Texas" data-tip="*30.50 million people* - 9.0% of the total|rank 2 of 52|equal tile - only color carries the value"/>
+      <text class="cell-label" x="426" y="583" font-size="12" text-anchor="middle">TX</text>
+      <text class="cell-sub" x="426" y="597" font-size="7" text-anchor="middle">30.5</text>
+      <path class="cell" d="M 792.2,546.0 L 825.1,565.0 L 825.1,603.0 L 792.2,622.0 L 759.3,603.0 L 759.3,565.0 Z" style="--o:0.58;opacity:var(--o)" data-tip-label="Florida" data-tip="*22.61 million people* - 6.7% of the total|rank 3 of 52|equal tile - only color carries the value"/>
+      <text class="cell-label" x="792" y="583" font-size="12" text-anchor="middle">FL</text>
+      <text class="cell-sub" x="792" y="597" font-size="7" text-anchor="middle">22.6</text>
+      <path class="cell" d="M 938.7,546.0 L 971.7,565.0 L 971.7,603.0 L 938.7,622.0 L 905.8,603.0 L 905.8,565.0 Z" style="--o:0.12;opacity:var(--o)" data-tip-label="Puerto Rico" data-tip="*3.21 million people* - 0.9% of the total|rank 32 of 52|equal tile - only color carries the value"/>
+      <text class="name" x="939" y="583" font-size="12" text-anchor="middle">PR</text>
+      <text class="sub" x="939" y="597" font-size="7" text-anchor="middle">3.2</text>
+      <text class="sub" x="60" y="656" font-size="8" letter-spacing="0.06em">TILE GRID CARTOGRAM · 50 STATES + DC + PR, ONE EQUAL HEXAGON EACH, PLACED BY ADJACENCY · VALUES IN MILLIONS</text>
+      <text class="sub" x="60" y="672" font-size="8" letter-spacing="0.06em">US CENSUS BUREAU ESTIMATES, JULY 2023 · THE GAP LEFT OF MI IS LAKE MICHIGAN</text>
+    </svg>
+  </div>
+</body>
+</html>

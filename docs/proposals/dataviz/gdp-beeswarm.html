@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Every country, one dot</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper: #f5f5f5;   --color-paper-2: #ececec;
+      --color-ink: #2d3142;     --color-muted: #4f5d75;
+      --color-soft: #7a8399;    --color-rule: rgba(45,49,66,0.12);
+      --color-rule-solid: #bfc0c0;
+      --color-accent: #eb6c36;  --color-accent-tint: rgba(235,108,54,0.08);
+      --color-link: #2e5aa8;    --color-surface: #ffffff;
+      --color-shadow: rgba(45,49,66,0.14);   /* ink-derived */
+      --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    html[data-theme="dark"] {
+      --color-paper: #2d3142;   --color-paper-2: #393e53;
+      --color-ink: #f5f5f5;     --color-muted: #bfc0c0;
+      --color-soft: #8e98ac;    --color-rule: rgba(245,245,245,0.12);
+      --color-rule-solid: rgba(191,192,192,0.25);
+      --color-accent: #f08a59;  --color-accent-tint: rgba(240,138,89,0.10);
+      --color-link: #6a95d8;    --color-surface: #393e53;
+      --color-shadow: rgba(45,49,66,0);      /* no blur on dark - the border carries the edge */
+    }
+    body { font-family: var(--font-sans); background: var(--color-paper);
+           color: var(--color-ink); min-height: 100vh; display: flex;
+           align-items: center; justify-content: center; padding: 3rem 2rem;
+           transition: background 220ms var(--ease-out); }
+    .frame { max-width: 1200px; width: 100%; position: relative; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+               letter-spacing: 0.18em; text-transform: uppercase;
+               color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+         font-weight: 400; letter-spacing: -0.02em; line-height: 1.15;
+         color: var(--color-ink); margin-bottom: 0.25rem; }
+    .standfirst { font-size: 0.875rem; color: var(--color-muted);
+                  margin-bottom: 1.5rem; max-width: 68ch; }
+    .theme-toggle { position: absolute; top: 0; right: 0;
+      font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+      letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-muted);
+      background: transparent; border: 1px solid var(--color-rule-solid);
+      border-radius: 4px; padding: 0.375rem 0.75rem; cursor: pointer;
+      transition: color 140ms var(--ease-out); }
+    .theme-toggle:hover { color: var(--color-ink); }
+    svg { width: 100%; min-width: 900px; display: block; }
+    text.name  { font-family: var(--font-sans); font-weight: 600; }
+    text.serif { font-family: var(--font-serif); }
+    text.sub, text.axis-label { font-family: var(--font-mono); }
+    .mask { fill: var(--color-paper); }
+    .name { fill: var(--color-ink); }
+    .sub  { fill: var(--color-muted); }
+    .faint { fill: var(--color-soft); }
+    .grid { stroke: var(--color-rule); }
+    .axis { stroke: var(--color-soft); }
+    .cell       { fill: var(--color-ink); }
+    .cell-focal { fill: var(--color-accent); }
+    .cell-label { fill: var(--color-paper); font-family: var(--font-sans); font-weight: 600; }
+    .cell-sub   { fill: var(--color-paper); font-family: var(--font-mono); opacity: 0.72; }
+    .ribbon       { fill: var(--color-muted); opacity: 0.18; }
+    .ribbon-focal { fill: var(--color-accent); opacity: 0.35; }
+    .bar-node   { fill: var(--color-ink); }
+    .slope      { stroke: var(--color-muted); }
+    .slope-focal{ stroke: var(--color-accent); }
+    .dot        { fill: var(--color-ink); }
+    .dot-hollow { fill: var(--color-paper); stroke: var(--color-ink); }
+    .dot-accent { fill: var(--color-accent); }
+    .dot-accent-hollow { fill: var(--color-paper); stroke: var(--color-accent); }
+    .range      { stroke: var(--color-rule-solid); }
+    [data-tip] { cursor: default; outline: none;
+      transition: fill 140ms var(--ease-out), stroke 140ms var(--ease-out),
+                  opacity 140ms var(--ease-out), filter 140ms var(--ease-out); }
+    /* Hover paints the mark ACCENT - emphasis and interaction share one
+       vocabulary. Translucent marks also lift their composited opacity via
+       the builder-stamped --o (fill swaps and filters alone move a
+       12%-opacity mark by ~2 RGB points - measured). */
+    [data-tip]:hover, [data-tip]:focus-visible {
+      fill: var(--color-accent);
+      opacity: clamp(0.4, calc(var(--o, 1) * 2.4), 1);
+    }
+    /* Line-form marks (fill="none") recolor their stroke - an accent FILL
+       would blob an arc or slope into a shape. */
+    [data-tip][fill="none"]:hover, [data-tip][fill="none"]:focus-visible,
+    line[data-tip]:hover, line[data-tip]:focus-visible {
+      fill: none; stroke: var(--color-accent);
+    }
+    /* Marks that are ALREADY accent (the focal element) respond by darkening
+       on light / lifting on dark, so nothing sits inert under the cursor. */
+    .cell-focal[data-tip]:hover, .dot-accent[data-tip]:hover,
+    .ribbon-focal[data-tip]:hover, .slope-focal[data-tip]:hover,
+    .cell-focal[data-tip]:focus-visible, .dot-accent[data-tip]:focus-visible {
+      filter: brightness(0.85);
+    }
+    html[data-theme="dark"] .cell-focal[data-tip]:hover,
+    html[data-theme="dark"] .dot-accent[data-tip]:hover {
+      filter: brightness(1.2);
+    }
+    /* Warming-stripes exemption: a cold year must never turn warm-orange
+       under the cursor - it keeps its pole and lifts opacity instead. */
+    .cell-cold[data-tip]:hover, .cell-cold[data-tip]:focus-visible {
+      fill: var(--color-link);
+    }
+    [data-tip]:focus-visible { outline: 2px solid var(--color-link); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { [data-tip] { transition: none; } }
+    .dd-tooltip {
+      position: fixed; z-index: 10; max-width: 264px; pointer-events: none;
+      background: var(--color-surface); color: var(--color-ink);
+      border: 1px solid var(--color-rule-solid); border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      box-shadow: 0 1px 0 var(--color-rule), 0 6px 16px var(--color-shadow);
+      opacity: 0; transform: translateY(2px);
+      transition: opacity 140ms var(--ease-out), transform 140ms var(--ease-out);
+      font-family: var(--font-sans); font-size: 0.75rem; line-height: 1.45;
+    }
+    .dd-tooltip.dd-show { opacity: 1; transform: none; }
+    .dd-tooltip .dd-label { font-size: 0.6rem; font-weight: 600;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--color-soft); margin-bottom: 0.25rem; font-family: var(--font-mono); }
+    .dd-tooltip .dd-line { color: var(--color-muted); }
+    .dd-tooltip .dd-line strong { color: var(--color-ink); font-weight: 600; }
+    .dd-tooltip .dd-line code { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-ink); }
+    @media (prefers-reduced-motion: reduce) { .dd-tooltip { transition: none; transform: none; } }
+  </style>
+  <script data-theme-controls>
+    (function () {
+      var q = new URLSearchParams(location.search).get('theme');
+      var sys = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      var pref = null; try { pref = localStorage.getItem('dd-theme'); } catch (e) {}
+      document.documentElement.dataset.theme = (q === 'dark' || q === 'light') ? q : (pref || sys);
+    })();
+    addEventListener('DOMContentLoaded', function () {
+      var b = document.querySelector('.theme-toggle');
+      var label = function () { b.textContent =
+        document.documentElement.dataset.theme === 'dark' ? 'Light' : 'Dark'; };
+      b.addEventListener('click', function () {
+        var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('dd-theme', next); } catch (e) {}
+        label();
+      });
+      label();
+      var tip = document.createElement('div');
+      tip.className = 'dd-tooltip'; tip.id = 'dd-tooltip';
+      tip.setAttribute('role', 'tooltip');
+      document.body.appendChild(tip);
+      var esc = function (s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+      var fmt = function (s) { return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*([^*]+)\*/g,'<strong>$1</strong>'); };
+      var show = function (el) {
+        var lines = (el.getAttribute('data-tip') || '').split('|');
+        var lab = el.getAttribute('data-tip-label');
+        var html = lab ? '<div class="dd-label">' + esc(lab) + '</div>' : '';
+        for (var i = 0; i < lines.length; i++) html += '<div class="dd-line">' + fmt(lines[i]) + '</div>';
+        tip.innerHTML = html;
+        el.setAttribute('aria-describedby', 'dd-tooltip');
+        var r = el.getBoundingClientRect();
+        tip.classList.add('dd-show');
+        var x = Math.min(Math.max(8, r.left + r.width/2 - tip.offsetWidth/2), innerWidth - tip.offsetWidth - 8);
+        var y = r.top - tip.offsetHeight - 10;
+        if (y < 8) y = r.bottom + 10;
+        tip.style.left = x + 'px'; tip.style.top = y + 'px';
+      };
+      var hide = function (el) { tip.classList.remove('dd-show'); if (el) el.removeAttribute('aria-describedby'); };
+      var ts = document.querySelectorAll('[data-tip]');
+      for (var i = 0; i < ts.length; i++) {
+        var el = ts[i];
+        if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+        el.addEventListener('pointerenter', function () { show(this); });
+        el.addEventListener('pointerleave', function () { hide(this); });
+        el.addEventListener('focus', function () { show(this); });
+        el.addEventListener('blur', function () { hide(this); });
+      }
+      addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(document.activeElement); });
+      addEventListener('scroll', function () { hide(); }, true);
+    });
+  </script>
+</head>
+<body>
+  <div class="frame">
+    <button class="theme-toggle" type="button" aria-label="Switch color theme">Dark</button>
+    <p class="eyebrow">Beeswarm · world incomes</p>
+    <h1>Every country, one dot</h1>
+    <p class="standfirst">The whole world economy on a log scale - a hundredfold spread from the poorest to the richest. The swarm thickens in the middle-income band; the accent dot sits alone at the top.</p>
+    <svg viewBox="0 0 1000 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="gdp-beeswarm-title gdp-beeswarm-desc">
+      <title id="gdp-beeswarm-title">Every country, one dot</title>
+      <desc id="gdp-beeswarm-desc">Beeswarm plot of GDP per capita for every country in 2022 on a log axis, from under a thousand dollars to over a hundred thousand.</desc>
+      <rect class="mask" width="100%" height="100%"/>
+      <line class="grid" x1="191" y1="104" x2="191" y2="496" stroke-width="0.8"/>
+      <text class="axis-label sub" x="191" y="520" font-size="8" text-anchor="middle">$1k</text>
+      <line class="grid" x1="353" y1="104" x2="353" y2="496" stroke-width="0.8"/>
+      <text class="axis-label sub" x="353" y="520" font-size="8" text-anchor="middle">$3k</text>
+      <line class="grid" x1="529" y1="104" x2="529" y2="496" stroke-width="0.8"/>
+      <text class="axis-label sub" x="529" y="520" font-size="8" text-anchor="middle">$10k</text>
+      <line class="grid" x1="691" y1="104" x2="691" y2="496" stroke-width="0.8"/>
+      <text class="axis-label sub" x="691" y="520" font-size="8" text-anchor="middle">$30k</text>
+      <line class="grid" x1="867" y1="104" x2="867" y2="496" stroke-width="0.8"/>
+      <text class="axis-label sub" x="867" y="520" font-size="8" text-anchor="middle">$100k</text>
+      <circle class="dot" cx="115.5" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Central African Republic" data-tip="*$596* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="142.5" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Burundi" data-tip="*$717* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="160.6" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Liberia" data-tip="*$811* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="166.5" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Democratic Republic of Congo" data-tip="*$844* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="192.5" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Niger" data-tip="*$1,008* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="203.7" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Mozambique" data-tip="*$1,088* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="216.9" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Malawi" data-tip="*$1,190* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="236.2" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Afghanistan" data-tip="*$1,358* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="237.2" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Madagascar" data-tip="*$1,367* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="240.0" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Chad" data-tip="*$1,394* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="255.3" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Haiti" data-tip="*$1,546* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="257.4" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="North Korea" data-tip="*$1,569* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="259.1" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Togo" data-tip="*$1,587* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="262.6" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Guinea-Bissau" data-tip="*$1,625* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="265.0" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Mali" data-tip="*$1,652* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="268.4" cy="342.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Sierra Leone" data-tip="*$1,690* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="269.5" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Zimbabwe" data-tip="*$1,704* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="269.6" cy="258.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Burkina Faso" data-tip="*$1,705* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="278.4" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Guinea" data-tip="*$1,809* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="285.6" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Comoros" data-tip="*$1,900* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="290.1" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Yemen" data-tip="*$1,959* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="293.8" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Gambia" data-tip="*$2,011* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="301.8" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Uganda" data-tip="*$2,122* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="306.9" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Rwanda" data-tip="*$2,198* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="312.9" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Ethiopia" data-tip="*$2,289* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="314.4" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Lesotho" data-tip="*$2,313* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="324.5" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Benin" data-tip="*$2,477* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="325.5" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Syria" data-tip="*$2,495* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="335.0" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Senegal" data-tip="*$2,661* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="343.1" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Cameroon" data-tip="*$2,812* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="353.3" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Nepal" data-tip="*$3,014* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="355.4" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Tanzania" data-tip="*$3,057* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="368.5" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Zambia" data-tip="*$3,342* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="371.1" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Kenya" data-tip="*$3,404* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="380.3" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Djibouti" data-tip="*$3,623* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="382.6" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Mauritania" data-tip="*$3,680* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="385.4" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Sao Tome and Principe" data-tip="*$3,752* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="392.8" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Cambodia" data-tip="*$3,944* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="395.3" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Cote d'Ivoire" data-tip="*$4,012* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="401.5" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Congo" data-tip="*$4,188* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="403.5" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Ghana" data-tip="*$4,242* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="420.8" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Palestine" data-tip="*$4,775* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="425.4" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Bangladesh" data-tip="*$4,926* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="429.6" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Nigeria" data-tip="*$5,070* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="430.3" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Nicaragua" data-tip="*$5,093* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="432.7" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Myanmar" data-tip="*$5,177* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="433.0" cy="342.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Honduras" data-tip="*$5,187* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="435.2" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Venezuela" data-tip="*$5,267* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="436.3" cy="258.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Kyrgyzstan" data-tip="*$5,305* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="441.8" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Tajikistan" data-tip="*$5,508* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="442.4" cy="356.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Pakistan" data-tip="*$5,532* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="457.2" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Angola" data-tip="*$6,119* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="465.7" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Bolivia" data-tip="*$6,481* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="470.0" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Moldova" data-tip="*$6,675* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="480.4" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Laos" data-tip="*$7,168* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="481.2" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Cape Verde" data-tip="*$7,203* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="486.7" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Jamaica" data-tip="*$7,482* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="490.0" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Cuba" data-tip="*$7,649* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="491.9" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Ukraine" data-tip="*$7,749* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="492.2" cy="342.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="India" data-tip="*$7,766* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="496.0" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Guatemala" data-tip="*$7,969* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="496.2" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Namibia" data-tip="*$7,979* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="497.5" cy="258.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Vietnam" data-tip="*$8,050* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="503.2" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Philippines" data-tip="*$8,371* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="503.7" cy="356.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Morocco" data-tip="*$8,400* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="505.9" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Eswatini" data-tip="*$8,522* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="509.9" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Paraguay" data-tip="*$8,763* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="511.9" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Dominica" data-tip="*$8,880* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="516.3" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Jordan" data-tip="*$9,151* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="517.4" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="El Salvador" data-tip="*$9,219* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="531.1" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Ecuador" data-tip="*$10,124* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="534.2" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Lebanon" data-tip="*$10,341* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="535.8" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Saint Lucia" data-tip="*$10,452* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="539.3" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Sri Lanka" data-tip="*$10,705* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="542.2" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Tunisia" data-tip="*$10,914* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="548.8" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="South Africa" data-tip="*$11,416* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="550.4" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Barbados" data-tip="*$11,546* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="557.8" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Bosnia and Herzegovina" data-tip="*$12,143* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="562.8" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Uzbekistan" data-tip="*$12,559* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="565.0" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Libya" data-tip="*$12,755* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="565.1" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Peru" data-tip="*$12,763* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="565.6" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Indonesia" data-tip="*$12,802* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="567.6" cy="342.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Albania" data-tip="*$12,978* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="568.6" cy="258.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Iraq" data-tip="*$13,072* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="570.1" cy="356.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Egypt" data-tip="*$13,205* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="572.7" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Mongolia" data-tip="*$13,443* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="573.4" cy="244.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Algeria" data-tip="*$13,506* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="577.0" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Armenia" data-tip="*$13,838* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="579.2" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="North Macedonia" data-tip="*$14,051* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="582.4" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Georgia" data-tip="*$14,360* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="583.5" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Colombia" data-tip="*$14,469* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="585.3" cy="342.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Brazil" data-tip="*$14,640* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="593.6" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Costa Rica" data-tip="*$15,497* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="595.7" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Gabon" data-tip="*$15,721* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="600.5" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Mexico" data-tip="*$16,235* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="601.5" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Botswana" data-tip="*$16,352* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="602.1" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Thailand" data-tip="*$16,421* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="608.0" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Serbia" data-tip="*$17,098* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="609.2" cy="342.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Turkmenistan" data-tip="*$17,235* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="613.0" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Azerbaijan" data-tip="*$17,683* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="613.2" cy="258.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Dominican Republic" data-tip="*$17,714* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="618.0" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Argentina" data-tip="*$18,292* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="619.4" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Iran" data-tip="*$18,473* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="621.2" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Belarus" data-tip="*$18,700* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="625.4" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="China" data-tip="*$19,238* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="632.4" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Uruguay" data-tip="*$20,182* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="635.3" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Bulgaria" data-tip="*$20,592* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="635.7" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Mauritius" data-tip="*$20,643* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="637.8" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Montenegro" data-tip="*$20,942* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="649.7" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Equatorial Guinea" data-tip="*$22,707* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="649.9" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Chile" data-tip="*$22,741* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="655.1" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Panama" data-tip="*$23,557* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="665.5" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Greece" data-tip="*$25,284* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="666.4" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Russia" data-tip="*$25,437* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="668.3" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Trinidad and Tobago" data-tip="*$25,773* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="670.7" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Romania" data-tip="*$26,198* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="672.3" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Kazakhstan" data-tip="*$26,492* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="673.1" cy="342.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Malaysia" data-tip="*$26,629* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="675.0" cy="258.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Croatia" data-tip="*$26,987* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="676.3" cy="356.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Latvia" data-tip="*$27,220* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="677.1" cy="244.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Turkey" data-tip="*$27,362* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="677.9" cy="370.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Slovakia" data-tip="*$27,519* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="685.6" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Portugal" data-tip="*$28,992* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="687.9" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Hungary" data-tip="*$29,452* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="690.9" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Estonia" data-tip="*$30,067* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="694.7" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Lithuania" data-tip="*$30,863* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="695.7" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Seychelles" data-tip="*$31,055* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="697.9" cy="342.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Cyprus" data-tip="*$31,523* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="701.2" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Czechia" data-tip="*$32,247* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="702.2" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Poland" data-tip="*$32,468* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="703.1" cy="258.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Slovenia" data-tip="*$32,674* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="709.5" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Spain" data-tip="*$34,123* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="711.1" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Malta" data-tip="*$34,496* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="714.4" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Puerto Rico" data-tip="*$35,281* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="718.3" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Italy" data-tip="*$36,224* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="720.0" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Israel" data-tip="*$36,649* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="726.2" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="New Zealand" data-tip="*$38,250* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="726.3" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Japan" data-tip="*$38,269* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="726.8" cy="342.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="United Kingdom" data-tip="*$38,407* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="727.8" cy="258.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Bahrain" data-tip="*$38,652* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="729.3" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="France" data-tip="*$39,066* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="735.4" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Finland" data-tip="*$40,701* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="737.6" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="South Korea" data-tip="*$41,321* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="739.5" cy="356.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Belgium" data-tip="*$41,872* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="740.5" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Iceland" data-tip="*$42,146* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="746.1" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Austria" data-tip="*$43,793* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="751.8" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Canada" data-tip="*$45,530* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="755.4" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Germany" data-tip="*$46,648* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="756.9" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Sweden" data-tip="*$47,126* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="759.5" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Oman" data-tip="*$47,989* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="760.5" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Hong Kong" data-tip="*$48,289* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="764.6" cy="342.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Netherlands" data-tip="*$49,670* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="767.6" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Denmark" data-tip="*$50,690* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="771.5" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Australia" data-tip="*$52,049* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="774.5" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Taiwan" data-tip="*$53,143* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="775.5" cy="328.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Saudi Arabia" data-tip="*$53,517* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="780.8" cy="272.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Luxembourg" data-tip="*$55,485* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="788.6" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="United States" data-tip="*$58,487* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="793.0" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Ireland" data-tip="*$60,257* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="800.2" cy="286.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Switzerland" data-tip="*$63,323* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="818.1" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Kuwait" data-tip="*$71,534* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="829.3" cy="314.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="United Arab Emirates" data-tip="*$77,204* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="835.1" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Singapore" data-tip="*$80,320* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot" cx="849.2" cy="300.0" r="6" style="--o:0.55;opacity:var(--o)" data-tip-label="Norway" data-tip="*$88,366* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <circle class="dot-accent" cx="926.0" cy="300.0" r="6" data-tip-label="Qatar" data-tip="*$149,171* GDP per capita|international-$ at PPP|Our World in Data, 2022"/>
+      <line class="grid" x1="926" y1="276" x2="926" y2="292" stroke-width="0.8"/>
+      <text class="sub" x="916" y="272" font-size="9" text-anchor="end">Qatar</text>
+      <line class="grid" x1="849" y1="260" x2="849" y2="292" stroke-width="0.8"/>
+      <text class="sub" x="839" y="256" font-size="9" text-anchor="end">Norway</text>
+      <line class="grid" x1="835" y1="244" x2="835" y2="292" stroke-width="0.8"/>
+      <text class="sub" x="825" y="240" font-size="9" text-anchor="end">Singapore</text>
+      <line class="grid" x1="115" y1="276" x2="115" y2="292" stroke-width="0.8"/>
+      <text class="sub" x="125" y="272" font-size="9" text-anchor="start">Central African Republic</text>
+      <line class="grid" x1="143" y1="260" x2="143" y2="292" stroke-width="0.8"/>
+      <text class="sub" x="153" y="256" font-size="9" text-anchor="start">Burundi</text>
+      <text class="sub" x="60" y="576" font-size="8" letter-spacing="0.06em">ONE DOT = ONE COUNTRY (165) · GDP PER CAPITA, INTERNATIONAL-$ (PPP), LOG SCALE · OUR WORLD IN DATA, 2022 · VERTICAL DODGE ONLY</text>
+    </svg>
+  </div>
+</body>
+</html>

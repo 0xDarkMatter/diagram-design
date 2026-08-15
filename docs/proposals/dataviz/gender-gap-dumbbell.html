@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Women outlive men, everywhere</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper: #f5f5f5;   --color-paper-2: #ececec;
+      --color-ink: #2d3142;     --color-muted: #4f5d75;
+      --color-soft: #7a8399;    --color-rule: rgba(45,49,66,0.12);
+      --color-rule-solid: #bfc0c0;
+      --color-accent: #eb6c36;  --color-accent-tint: rgba(235,108,54,0.08);
+      --color-link: #2e5aa8;    --color-surface: #ffffff;
+      --color-shadow: rgba(45,49,66,0.14);   /* ink-derived */
+      --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    html[data-theme="dark"] {
+      --color-paper: #2d3142;   --color-paper-2: #393e53;
+      --color-ink: #f5f5f5;     --color-muted: #bfc0c0;
+      --color-soft: #8e98ac;    --color-rule: rgba(245,245,245,0.12);
+      --color-rule-solid: rgba(191,192,192,0.25);
+      --color-accent: #f08a59;  --color-accent-tint: rgba(240,138,89,0.10);
+      --color-link: #6a95d8;    --color-surface: #393e53;
+      --color-shadow: rgba(45,49,66,0);      /* no blur on dark - the border carries the edge */
+    }
+    body { font-family: var(--font-sans); background: var(--color-paper);
+           color: var(--color-ink); min-height: 100vh; display: flex;
+           align-items: center; justify-content: center; padding: 3rem 2rem;
+           transition: background 220ms var(--ease-out); }
+    .frame { max-width: 1200px; width: 100%; position: relative; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+               letter-spacing: 0.18em; text-transform: uppercase;
+               color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+         font-weight: 400; letter-spacing: -0.02em; line-height: 1.15;
+         color: var(--color-ink); margin-bottom: 0.25rem; }
+    .standfirst { font-size: 0.875rem; color: var(--color-muted);
+                  margin-bottom: 1.5rem; max-width: 68ch; }
+    .theme-toggle { position: absolute; top: 0; right: 0;
+      font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+      letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-muted);
+      background: transparent; border: 1px solid var(--color-rule-solid);
+      border-radius: 4px; padding: 0.375rem 0.75rem; cursor: pointer;
+      transition: color 140ms var(--ease-out); }
+    .theme-toggle:hover { color: var(--color-ink); }
+    svg { width: 100%; min-width: 900px; display: block; }
+    text.name  { font-family: var(--font-sans); font-weight: 600; }
+    text.serif { font-family: var(--font-serif); }
+    text.sub, text.axis-label { font-family: var(--font-mono); }
+    .mask { fill: var(--color-paper); }
+    .name { fill: var(--color-ink); }
+    .sub  { fill: var(--color-muted); }
+    .faint { fill: var(--color-soft); }
+    .grid { stroke: var(--color-rule); }
+    .axis { stroke: var(--color-soft); }
+    .cell       { fill: var(--color-ink); }
+    .cell-focal { fill: var(--color-accent); }
+    .cell-label { fill: var(--color-paper); font-family: var(--font-sans); font-weight: 600; }
+    .cell-sub   { fill: var(--color-paper); font-family: var(--font-mono); opacity: 0.72; }
+    .ribbon       { fill: var(--color-muted); opacity: 0.18; }
+    .ribbon-focal { fill: var(--color-accent); opacity: 0.35; }
+    .bar-node   { fill: var(--color-ink); }
+    .slope      { stroke: var(--color-muted); }
+    .slope-focal{ stroke: var(--color-accent); }
+    .dot        { fill: var(--color-ink); }
+    .dot-hollow { fill: var(--color-paper); stroke: var(--color-ink); }
+    .dot-accent { fill: var(--color-accent); }
+    .dot-accent-hollow { fill: var(--color-paper); stroke: var(--color-accent); }
+    .range      { stroke: var(--color-rule-solid); }
+    [data-tip] { cursor: default; outline: none;
+      transition: fill 140ms var(--ease-out), stroke 140ms var(--ease-out),
+                  opacity 140ms var(--ease-out), filter 140ms var(--ease-out); }
+    /* Hover paints the mark ACCENT - emphasis and interaction share one
+       vocabulary. Translucent marks also lift their composited opacity via
+       the builder-stamped --o (fill swaps and filters alone move a
+       12%-opacity mark by ~2 RGB points - measured). */
+    [data-tip]:hover, [data-tip]:focus-visible {
+      fill: var(--color-accent);
+      opacity: clamp(0.4, calc(var(--o, 1) * 2.4), 1);
+    }
+    /* Line-form marks (fill="none") recolor their stroke - an accent FILL
+       would blob an arc or slope into a shape. */
+    [data-tip][fill="none"]:hover, [data-tip][fill="none"]:focus-visible,
+    line[data-tip]:hover, line[data-tip]:focus-visible {
+      fill: none; stroke: var(--color-accent);
+    }
+    /* Marks that are ALREADY accent (the focal element) respond by darkening
+       on light / lifting on dark, so nothing sits inert under the cursor. */
+    .cell-focal[data-tip]:hover, .dot-accent[data-tip]:hover,
+    .ribbon-focal[data-tip]:hover, .slope-focal[data-tip]:hover,
+    .cell-focal[data-tip]:focus-visible, .dot-accent[data-tip]:focus-visible {
+      filter: brightness(0.85);
+    }
+    html[data-theme="dark"] .cell-focal[data-tip]:hover,
+    html[data-theme="dark"] .dot-accent[data-tip]:hover {
+      filter: brightness(1.2);
+    }
+    /* Warming-stripes exemption: a cold year must never turn warm-orange
+       under the cursor - it keeps its pole and lifts opacity instead. */
+    .cell-cold[data-tip]:hover, .cell-cold[data-tip]:focus-visible {
+      fill: var(--color-link);
+    }
+    [data-tip]:focus-visible { outline: 2px solid var(--color-link); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { [data-tip] { transition: none; } }
+    .dd-tooltip {
+      position: fixed; z-index: 10; max-width: 264px; pointer-events: none;
+      background: var(--color-surface); color: var(--color-ink);
+      border: 1px solid var(--color-rule-solid); border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      box-shadow: 0 1px 0 var(--color-rule), 0 6px 16px var(--color-shadow);
+      opacity: 0; transform: translateY(2px);
+      transition: opacity 140ms var(--ease-out), transform 140ms var(--ease-out);
+      font-family: var(--font-sans); font-size: 0.75rem; line-height: 1.45;
+    }
+    .dd-tooltip.dd-show { opacity: 1; transform: none; }
+    .dd-tooltip .dd-label { font-size: 0.6rem; font-weight: 600;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--color-soft); margin-bottom: 0.25rem; font-family: var(--font-mono); }
+    .dd-tooltip .dd-line { color: var(--color-muted); }
+    .dd-tooltip .dd-line strong { color: var(--color-ink); font-weight: 600; }
+    .dd-tooltip .dd-line code { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-ink); }
+    @media (prefers-reduced-motion: reduce) { .dd-tooltip { transition: none; transform: none; } }
+  </style>
+  <script data-theme-controls>
+    (function () {
+      var q = new URLSearchParams(location.search).get('theme');
+      var sys = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      var pref = null; try { pref = localStorage.getItem('dd-theme'); } catch (e) {}
+      document.documentElement.dataset.theme = (q === 'dark' || q === 'light') ? q : (pref || sys);
+    })();
+    addEventListener('DOMContentLoaded', function () {
+      var b = document.querySelector('.theme-toggle');
+      var label = function () { b.textContent =
+        document.documentElement.dataset.theme === 'dark' ? 'Light' : 'Dark'; };
+      b.addEventListener('click', function () {
+        var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('dd-theme', next); } catch (e) {}
+        label();
+      });
+      label();
+      var tip = document.createElement('div');
+      tip.className = 'dd-tooltip'; tip.id = 'dd-tooltip';
+      tip.setAttribute('role', 'tooltip');
+      document.body.appendChild(tip);
+      var esc = function (s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+      var fmt = function (s) { return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*([^*]+)\*/g,'<strong>$1</strong>'); };
+      var show = function (el) {
+        var lines = (el.getAttribute('data-tip') || '').split('|');
+        var lab = el.getAttribute('data-tip-label');
+        var html = lab ? '<div class="dd-label">' + esc(lab) + '</div>' : '';
+        for (var i = 0; i < lines.length; i++) html += '<div class="dd-line">' + fmt(lines[i]) + '</div>';
+        tip.innerHTML = html;
+        el.setAttribute('aria-describedby', 'dd-tooltip');
+        var r = el.getBoundingClientRect();
+        tip.classList.add('dd-show');
+        var x = Math.min(Math.max(8, r.left + r.width/2 - tip.offsetWidth/2), innerWidth - tip.offsetWidth - 8);
+        var y = r.top - tip.offsetHeight - 10;
+        if (y < 8) y = r.bottom + 10;
+        tip.style.left = x + 'px'; tip.style.top = y + 'px';
+      };
+      var hide = function (el) { tip.classList.remove('dd-show'); if (el) el.removeAttribute('aria-describedby'); };
+      var ts = document.querySelectorAll('[data-tip]');
+      for (var i = 0; i < ts.length; i++) {
+        var el = ts[i];
+        if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+        el.addEventListener('pointerenter', function () { show(this); });
+        el.addEventListener('pointerleave', function () { hide(this); });
+        el.addEventListener('focus', function () { show(this); });
+        el.addEventListener('blur', function () { hide(this); });
+      }
+      addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(document.activeElement); });
+      addEventListener('scroll', function () { hide(); }, true);
+    });
+  </script>
+</head>
+<body>
+  <div class="frame">
+    <button class="theme-toggle" type="button" aria-label="Switch color theme">Dark</button>
+    <p class="eyebrow">Dumbbell · longevity gap</p>
+    <h1>Women outlive men, everywhere</h1>
+    <p class="standfirst">Hollow dot men, filled dot women. The gap is universal but not uniform: three and a half years in the UK, ten in Russia - the widest of any large country.</p>
+    <svg viewBox="0 0 1000 592" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="gender-gap-dumbbell-title gender-gap-dumbbell-desc">
+      <title id="gender-gap-dumbbell-title">Women outlive men, everywhere</title>
+      <desc id="gender-gap-dumbbell-desc">Dumbbell chart of male versus female life expectancy in six large countries from UN 2023 data; Russia shows the widest gap at about ten years.</desc>
+      <rect class="mask" width="100%" height="100%"/>
+      <line class="grid" x1="260" y1="64" x2="260" y2="472" stroke-width="0.8"/>
+      <text class="axis-label sub" x="260" y="496" font-size="8" text-anchor="middle">60</text>
+      <line class="grid" x1="480" y1="64" x2="480" y2="472" stroke-width="0.8"/>
+      <text class="axis-label sub" x="480" y="496" font-size="8" text-anchor="middle">70</text>
+      <line class="grid" x1="700" y1="64" x2="700" y2="472" stroke-width="0.8"/>
+      <text class="axis-label sub" x="700" y="496" font-size="8" text-anchor="middle">80</text>
+      <line class="grid" x1="920" y1="64" x2="920" y2="472" stroke-width="0.8"/>
+      <text class="axis-label sub" x="920" y="496" font-size="8" text-anchor="middle">90</text>
+      <line class="range" x1="724" y1="96" x2="856" y2="96" stroke-width="2" data-tip-label="Japan" data-tip="men *81.1* · women *87.1*|a 6.0-year gap|UN World Population Prospects, 2023"/>
+      <circle class="dot-hollow" cx="724" cy="96" r="6" stroke-width="1.5" data-tip-label="Japan" data-tip="men *81.1* · women *87.1*|a 6.0-year gap|UN World Population Prospects, 2023"/>
+      <circle class="dot" cx="856" cy="96" r="6" data-tip-label="Japan" data-tip="men *81.1* · women *87.1*|a 6.0-year gap|UN World Population Prospects, 2023"/>
+      <text class="name" x="204" y="100" font-size="12" text-anchor="end">Japan</text>
+      <text class="sub" x="712" y="100" font-size="8" text-anchor="end">81.1</text>
+      <text class="sub" x="868" y="100" font-size="8">87.1</text>
+      <line class="range" x1="682" y1="164" x2="764" y2="164" stroke-width="2" data-tip-label="United Kingdom" data-tip="men *79.2* · women *82.9*|a 3.7-year gap|UN World Population Prospects, 2023"/>
+      <circle class="dot-hollow" cx="682" cy="164" r="6" stroke-width="1.5" data-tip-label="United Kingdom" data-tip="men *79.2* · women *82.9*|a 3.7-year gap|UN World Population Prospects, 2023"/>
+      <circle class="dot" cx="764" cy="164" r="6" data-tip-label="United Kingdom" data-tip="men *79.2* · women *82.9*|a 3.7-year gap|UN World Population Prospects, 2023"/>
+      <text class="name" x="204" y="168" font-size="12" text-anchor="end">United Kingdom</text>
+      <text class="sub" x="670" y="168" font-size="8" text-anchor="end">79.2</text>
+      <text class="sub" x="776" y="168" font-size="8">82.9</text>
+      <line class="range" x1="601" y1="232" x2="720" y2="232" stroke-width="2" data-tip-label="United States" data-tip="men *75.5* · women *80.9*|a 5.4-year gap|UN World Population Prospects, 2023"/>
+      <circle class="dot-hollow" cx="601" cy="232" r="6" stroke-width="1.5" data-tip-label="United States" data-tip="men *75.5* · women *80.9*|a 5.4-year gap|UN World Population Prospects, 2023"/>
+      <circle class="dot" cx="720" cy="232" r="6" data-tip-label="United States" data-tip="men *75.5* · women *80.9*|a 5.4-year gap|UN World Population Prospects, 2023"/>
+      <text class="name" x="204" y="236" font-size="12" text-anchor="end">United States</text>
+      <text class="sub" x="589" y="236" font-size="8" text-anchor="end">75.5</text>
+      <text class="sub" x="732" y="236" font-size="8">80.9</text>
+      <line class="range" x1="603" y1="300" x2="720" y2="300" stroke-width="2" data-tip-label="China" data-tip="men *75.6* · women *80.9*|a 5.3-year gap|UN World Population Prospects, 2023"/>
+      <circle class="dot-hollow" cx="603" cy="300" r="6" stroke-width="1.5" data-tip-label="China" data-tip="men *75.6* · women *80.9*|a 5.3-year gap|UN World Population Prospects, 2023"/>
+      <circle class="dot" cx="720" cy="300" r="6" data-tip-label="China" data-tip="men *75.6* · women *80.9*|a 5.3-year gap|UN World Population Prospects, 2023"/>
+      <text class="name" x="204" y="304" font-size="12" text-anchor="end">China</text>
+      <text class="sub" x="591" y="304" font-size="8" text-anchor="end">75.6</text>
+      <text class="sub" x="732" y="304" font-size="8">80.9</text>
+      <line class="range" x1="427" y1="368" x2="652" y2="368" stroke-width="2" data-tip-label="Russia" data-tip="men *67.6* · women *77.8*|a 10.2-year gap|UN World Population Prospects, 2023"/>
+      <circle class="dot-accent-hollow" cx="427" cy="368" r="6" stroke-width="1.5" data-tip-label="Russia" data-tip="men *67.6* · women *77.8*|a 10.2-year gap|UN World Population Prospects, 2023"/>
+      <circle class="dot-accent" cx="652" cy="368" r="6" data-tip-label="Russia" data-tip="men *67.6* · women *77.8*|a 10.2-year gap|UN World Population Prospects, 2023"/>
+      <text class="name" x="204" y="372" font-size="12" text-anchor="end">Russia</text>
+      <text class="sub" x="415" y="372" font-size="8" text-anchor="end">67.6</text>
+      <text class="sub" x="664" y="372" font-size="8">77.8</text>
+      <line class="range" x1="491" y1="436" x2="559" y2="436" stroke-width="2" data-tip-label="India" data-tip="men *70.5* · women *73.6*|a 3.1-year gap|UN World Population Prospects, 2023"/>
+      <circle class="dot-hollow" cx="491" cy="436" r="6" stroke-width="1.5" data-tip-label="India" data-tip="men *70.5* · women *73.6*|a 3.1-year gap|UN World Population Prospects, 2023"/>
+      <circle class="dot" cx="559" cy="436" r="6" data-tip-label="India" data-tip="men *70.5* · women *73.6*|a 3.1-year gap|UN World Population Prospects, 2023"/>
+      <text class="name" x="204" y="440" font-size="12" text-anchor="end">India</text>
+      <text class="sub" x="479" y="440" font-size="8" text-anchor="end">70.5</text>
+      <text class="sub" x="571" y="440" font-size="8">73.6</text>
+      <circle class="dot-hollow" cx="272" cy="536" r="6" stroke-width="1.5"/>
+      <text class="sub" x="288" y="540" font-size="9">men</text>
+      <circle class="dot" cx="372" cy="536" r="6"/>
+      <text class="sub" x="388" y="540" font-size="9">women</text>
+      <text class="sub" x="60" y="576" font-size="8" letter-spacing="0.06em">LIFE EXPECTANCY AT BIRTH BY SEX, YEARS · UN WORLD POPULATION PROSPECTS 2023 · WOMEN OUTLIVE MEN EVERYWHERE - RUSSIA BY A DECADE</text>
+    </svg>
+  </div>
+</body>
+</html>

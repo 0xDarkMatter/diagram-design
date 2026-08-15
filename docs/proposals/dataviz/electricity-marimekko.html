@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Who makes electricity, and from what</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper: #f5f5f5;   --color-paper-2: #ececec;
+      --color-ink: #2d3142;     --color-muted: #4f5d75;
+      --color-soft: #7a8399;    --color-rule: rgba(45,49,66,0.12);
+      --color-rule-solid: #bfc0c0;
+      --color-accent: #eb6c36;  --color-accent-tint: rgba(235,108,54,0.08);
+      --color-link: #2e5aa8;    --color-surface: #ffffff;
+      --color-shadow: rgba(45,49,66,0.14);   /* ink-derived */
+      --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    html[data-theme="dark"] {
+      --color-paper: #2d3142;   --color-paper-2: #393e53;
+      --color-ink: #f5f5f5;     --color-muted: #bfc0c0;
+      --color-soft: #8e98ac;    --color-rule: rgba(245,245,245,0.12);
+      --color-rule-solid: rgba(191,192,192,0.25);
+      --color-accent: #f08a59;  --color-accent-tint: rgba(240,138,89,0.10);
+      --color-link: #6a95d8;    --color-surface: #393e53;
+      --color-shadow: rgba(45,49,66,0);      /* no blur on dark - the border carries the edge */
+    }
+    body { font-family: var(--font-sans); background: var(--color-paper);
+           color: var(--color-ink); min-height: 100vh; display: flex;
+           align-items: center; justify-content: center; padding: 3rem 2rem;
+           transition: background 220ms var(--ease-out); }
+    .frame { max-width: 1200px; width: 100%; position: relative; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+               letter-spacing: 0.18em; text-transform: uppercase;
+               color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+         font-weight: 400; letter-spacing: -0.02em; line-height: 1.15;
+         color: var(--color-ink); margin-bottom: 0.25rem; }
+    .standfirst { font-size: 0.875rem; color: var(--color-muted);
+                  margin-bottom: 1.5rem; max-width: 68ch; }
+    .theme-toggle { position: absolute; top: 0; right: 0;
+      font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+      letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-muted);
+      background: transparent; border: 1px solid var(--color-rule-solid);
+      border-radius: 4px; padding: 0.375rem 0.75rem; cursor: pointer;
+      transition: color 140ms var(--ease-out); }
+    .theme-toggle:hover { color: var(--color-ink); }
+    svg { width: 100%; min-width: 900px; display: block; }
+    text.name  { font-family: var(--font-sans); font-weight: 600; }
+    text.serif { font-family: var(--font-serif); }
+    text.sub, text.axis-label { font-family: var(--font-mono); }
+    .mask { fill: var(--color-paper); }
+    .name { fill: var(--color-ink); }
+    .sub  { fill: var(--color-muted); }
+    .faint { fill: var(--color-soft); }
+    .grid { stroke: var(--color-rule); }
+    .axis { stroke: var(--color-soft); }
+    .cell       { fill: var(--color-ink); }
+    .cell-focal { fill: var(--color-accent); }
+    .cell-label { fill: var(--color-paper); font-family: var(--font-sans); font-weight: 600; }
+    .cell-sub   { fill: var(--color-paper); font-family: var(--font-mono); opacity: 0.72; }
+    .ribbon       { fill: var(--color-muted); opacity: 0.18; }
+    .ribbon-focal { fill: var(--color-accent); opacity: 0.35; }
+    .bar-node   { fill: var(--color-ink); }
+    .slope      { stroke: var(--color-muted); }
+    .slope-focal{ stroke: var(--color-accent); }
+    .dot        { fill: var(--color-ink); }
+    .dot-hollow { fill: var(--color-paper); stroke: var(--color-ink); }
+    .dot-accent { fill: var(--color-accent); }
+    .dot-accent-hollow { fill: var(--color-paper); stroke: var(--color-accent); }
+    .range      { stroke: var(--color-rule-solid); }
+    [data-tip] { cursor: default; outline: none;
+      transition: fill 140ms var(--ease-out), stroke 140ms var(--ease-out),
+                  opacity 140ms var(--ease-out), filter 140ms var(--ease-out); }
+    /* Hover paints the mark ACCENT - emphasis and interaction share one
+       vocabulary. Translucent marks also lift their composited opacity via
+       the builder-stamped --o (fill swaps and filters alone move a
+       12%-opacity mark by ~2 RGB points - measured). */
+    [data-tip]:hover, [data-tip]:focus-visible {
+      fill: var(--color-accent);
+      opacity: clamp(0.4, calc(var(--o, 1) * 2.4), 1);
+    }
+    /* Line-form marks (fill="none") recolor their stroke - an accent FILL
+       would blob an arc or slope into a shape. */
+    [data-tip][fill="none"]:hover, [data-tip][fill="none"]:focus-visible,
+    line[data-tip]:hover, line[data-tip]:focus-visible {
+      fill: none; stroke: var(--color-accent);
+    }
+    /* Marks that are ALREADY accent (the focal element) respond by darkening
+       on light / lifting on dark, so nothing sits inert under the cursor. */
+    .cell-focal[data-tip]:hover, .dot-accent[data-tip]:hover,
+    .ribbon-focal[data-tip]:hover, .slope-focal[data-tip]:hover,
+    .cell-focal[data-tip]:focus-visible, .dot-accent[data-tip]:focus-visible {
+      filter: brightness(0.85);
+    }
+    html[data-theme="dark"] .cell-focal[data-tip]:hover,
+    html[data-theme="dark"] .dot-accent[data-tip]:hover {
+      filter: brightness(1.2);
+    }
+    /* Warming-stripes exemption: a cold year must never turn warm-orange
+       under the cursor - it keeps its pole and lifts opacity instead. */
+    .cell-cold[data-tip]:hover, .cell-cold[data-tip]:focus-visible {
+      fill: var(--color-link);
+    }
+    [data-tip]:focus-visible { outline: 2px solid var(--color-link); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { [data-tip] { transition: none; } }
+    .dd-tooltip {
+      position: fixed; z-index: 10; max-width: 264px; pointer-events: none;
+      background: var(--color-surface); color: var(--color-ink);
+      border: 1px solid var(--color-rule-solid); border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      box-shadow: 0 1px 0 var(--color-rule), 0 6px 16px var(--color-shadow);
+      opacity: 0; transform: translateY(2px);
+      transition: opacity 140ms var(--ease-out), transform 140ms var(--ease-out);
+      font-family: var(--font-sans); font-size: 0.75rem; line-height: 1.45;
+    }
+    .dd-tooltip.dd-show { opacity: 1; transform: none; }
+    .dd-tooltip .dd-label { font-size: 0.6rem; font-weight: 600;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--color-soft); margin-bottom: 0.25rem; font-family: var(--font-mono); }
+    .dd-tooltip .dd-line { color: var(--color-muted); }
+    .dd-tooltip .dd-line strong { color: var(--color-ink); font-weight: 600; }
+    .dd-tooltip .dd-line code { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-ink); }
+    @media (prefers-reduced-motion: reduce) { .dd-tooltip { transition: none; transform: none; } }
+  </style>
+  <script data-theme-controls>
+    (function () {
+      var q = new URLSearchParams(location.search).get('theme');
+      var sys = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      var pref = null; try { pref = localStorage.getItem('dd-theme'); } catch (e) {}
+      document.documentElement.dataset.theme = (q === 'dark' || q === 'light') ? q : (pref || sys);
+    })();
+    addEventListener('DOMContentLoaded', function () {
+      var b = document.querySelector('.theme-toggle');
+      var label = function () { b.textContent =
+        document.documentElement.dataset.theme === 'dark' ? 'Light' : 'Dark'; };
+      b.addEventListener('click', function () {
+        var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('dd-theme', next); } catch (e) {}
+        label();
+      });
+      label();
+      var tip = document.createElement('div');
+      tip.className = 'dd-tooltip'; tip.id = 'dd-tooltip';
+      tip.setAttribute('role', 'tooltip');
+      document.body.appendChild(tip);
+      var esc = function (s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+      var fmt = function (s) { return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*([^*]+)\*/g,'<strong>$1</strong>'); };
+      var show = function (el) {
+        var lines = (el.getAttribute('data-tip') || '').split('|');
+        var lab = el.getAttribute('data-tip-label');
+        var html = lab ? '<div class="dd-label">' + esc(lab) + '</div>' : '';
+        for (var i = 0; i < lines.length; i++) html += '<div class="dd-line">' + fmt(lines[i]) + '</div>';
+        tip.innerHTML = html;
+        el.setAttribute('aria-describedby', 'dd-tooltip');
+        var r = el.getBoundingClientRect();
+        tip.classList.add('dd-show');
+        var x = Math.min(Math.max(8, r.left + r.width/2 - tip.offsetWidth/2), innerWidth - tip.offsetWidth - 8);
+        var y = r.top - tip.offsetHeight - 10;
+        if (y < 8) y = r.bottom + 10;
+        tip.style.left = x + 'px'; tip.style.top = y + 'px';
+      };
+      var hide = function (el) { tip.classList.remove('dd-show'); if (el) el.removeAttribute('aria-describedby'); };
+      var ts = document.querySelectorAll('[data-tip]');
+      for (var i = 0; i < ts.length; i++) {
+        var el = ts[i];
+        if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+        el.addEventListener('pointerenter', function () { show(this); });
+        el.addEventListener('pointerleave', function () { hide(this); });
+        el.addEventListener('focus', function () { show(this); });
+        el.addEventListener('blur', function () { hide(this); });
+      }
+      addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(document.activeElement); });
+      addEventListener('scroll', function () { hide(); }, true);
+    });
+  </script>
+</head>
+<body>
+  <div class="frame">
+    <button class="theme-toggle" type="button" aria-label="Switch color theme">Dark</button>
+    <p class="eyebrow">Marimekko · world electricity</p>
+    <h1>Who makes electricity, and from what</h1>
+    <p class="standfirst">Width is how much a region generates; height is what it is made of. Asia is half the world's electricity and half of that is coal - while the accent band, wind and solar, is widest in Europe.</p>
+    <svg viewBox="0 0 1000 584" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="electricity-marimekko-title electricity-marimekko-desc">
+      <title id="electricity-marimekko-title">Who makes electricity, and from what</title>
+      <desc id="electricity-marimekko-desc">Marimekko chart of electricity generation by region and source; Asia's wide coal-heavy column dominates, with wind and solar highlighted across all regions.</desc>
+      <rect class="mask" width="100%" height="100%"/>
+      <rect class="cell" x="80.0" y="96.0" width="511.8" height="194.9" style="--o:0.8;opacity:var(--o)" data-tip-label="Asia · Coal" data-tip="*8,868 TWh* coal - 49% of Asia|region total 18,015 TWh|Ember via Our World in Data, 2024"/>
+      <text class="cell-label" x="90.0" y="113.0" font-size="9">Coal 49%</text>
+      <rect class="cell" x="80.0" y="292.9" width="511.8" height="61.9" style="--o:0.55;opacity:var(--o)" data-tip-label="Asia · Gas" data-tip="*2,879 TWh* gas - 16% of Asia|region total 18,015 TWh|Ember via Our World in Data, 2024"/>
+      <text class="cell-label" x="90.0" y="309.9" font-size="9">Gas 16%</text>
+      <rect class="cell" x="80.0" y="356.8" width="511.8" height="44.0" style="--o:0.38;opacity:var(--o)" data-tip-label="Asia · Hydro" data-tip="*2,073 TWh* hydro - 12% of Asia|region total 18,015 TWh|Ember via Our World in Data, 2024"/>
+      <text class="name" x="90.0" y="373.8" font-size="9">Hydro 12%</text>
+      <rect class="cell" x="80.0" y="402.9" width="511.8" height="17.2" style="--o:0.26;opacity:var(--o)" data-tip-label="Asia · Nuclear" data-tip="*865 TWh* nuclear - 5% of Asia|region total 18,015 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell-focal" x="80.0" y="422.1" width="511.8" height="52.4" data-tip-label="Asia · Wind & solar" data-tip="*2,448 TWh* wind & solar - 14% of Asia|region total 18,015 TWh|Ember via Our World in Data, 2024"/>
+      <text class="cell-label" x="90.0" y="439.1" font-size="9">Wind & solar 14%</text>
+      <rect class="cell" x="80.0" y="476.4" width="511.8" height="17.6" style="--o:0.15;opacity:var(--o)" data-tip-label="Asia · Other" data-tip="*881 TWh* other - 5% of Asia|region total 18,015 TWh|Ember via Our World in Data, 2024"/>
+      <text class="name" x="335.9" y="520" font-size="11" text-anchor="middle">Asia</text>
+      <text class="sub" x="335.9" y="536" font-size="8" text-anchor="middle">18.0k TWh</text>
+      <rect class="cell" x="594.8" y="96.0" width="155.1" height="48.8" style="--o:0.8;opacity:var(--o)" data-tip-label="North America · Coal" data-tip="*703 TWh* coal - 13% of North America|region total 5,534 TWh|Ember via Our World in Data, 2024"/>
+      <text class="cell-label" x="604.8" y="113.0" font-size="9">Coal 13%</text>
+      <rect class="cell" x="594.8" y="146.8" width="155.1" height="159.3" style="--o:0.55;opacity:var(--o)" data-tip-label="North America · Gas" data-tip="*2,231 TWh* gas - 40% of North America|region total 5,534 TWh|Ember via Our World in Data, 2024"/>
+      <text class="cell-label" x="604.8" y="163.8" font-size="9">Gas 40%</text>
+      <rect class="cell" x="594.8" y="308.1" width="155.1" height="43.9" style="--o:0.38;opacity:var(--o)" data-tip-label="North America · Hydro" data-tip="*634 TWh* hydro - 11% of North America|region total 5,534 TWh|Ember via Our World in Data, 2024"/>
+      <text class="name" x="604.8" y="325.1" font-size="9">Hydro 11%</text>
+      <rect class="cell" x="594.8" y="354.0" width="155.1" height="61.6" style="--o:0.26;opacity:var(--o)" data-tip-label="North America · Nuclear" data-tip="*880 TWh* nuclear - 16% of North America|region total 5,534 TWh|Ember via Our World in Data, 2024"/>
+      <text class="name" x="604.8" y="371.0" font-size="9">Nuclear 16%</text>
+      <rect class="cell-focal" x="594.8" y="417.5" width="155.1" height="60.9" data-tip-label="North America · Wind & solar" data-tip="*870 TWh* wind & solar - 16% of North America|region total 5,534 TWh|Ember via Our World in Data, 2024"/>
+      <text class="cell-label" x="604.8" y="434.5" font-size="9">Wind & solar 16%</text>
+      <rect class="cell" x="594.8" y="480.5" width="155.1" height="13.5" style="--o:0.15;opacity:var(--o)" data-tip-label="North America · Other" data-tip="*215 TWh* other - 4% of North America|region total 5,534 TWh|Ember via Our World in Data, 2024"/>
+      <text class="name" x="672.4" y="520" font-size="11" text-anchor="middle">North America</text>
+      <text class="sub" x="672.4" y="536" font-size="8" text-anchor="middle">5.5k TWh</text>
+      <rect class="cell" x="752.9" y="96.0" width="129.2" height="42.6" style="--o:0.8;opacity:var(--o)" data-tip-label="Europe · Coal" data-tip="*516 TWh* coal - 11% of Europe|region total 4,626 TWh|Ember via Our World in Data, 2024"/>
+      <text class="cell-label" x="762.9" y="113.0" font-size="9">Coal 11%</text>
+      <rect class="cell" x="752.9" y="140.6" width="129.2" height="95.4" style="--o:0.55;opacity:var(--o)" data-tip-label="Europe · Gas" data-tip="*1,126 TWh* gas - 24% of Europe|region total 4,626 TWh|Ember via Our World in Data, 2024"/>
+      <text class="cell-label" x="762.9" y="157.6" font-size="9">Gas 24%</text>
+      <rect class="cell" x="752.9" y="238.0" width="129.2" height="61.0" style="--o:0.38;opacity:var(--o)" data-tip-label="Europe · Hydro" data-tip="*728 TWh* hydro - 16% of Europe|region total 4,626 TWh|Ember via Our World in Data, 2024"/>
+      <text class="name" x="762.9" y="255.0" font-size="9">Hydro 16%</text>
+      <rect class="cell" x="752.9" y="300.9" width="129.2" height="79.6" style="--o:0.26;opacity:var(--o)" data-tip-label="Europe · Nuclear" data-tip="*944 TWh* nuclear - 20% of Europe|region total 4,626 TWh|Ember via Our World in Data, 2024"/>
+      <text class="name" x="762.9" y="317.9" font-size="9">Nuclear 20%</text>
+      <rect class="cell-focal" x="752.9" y="382.5" width="129.2" height="83.3" data-tip-label="Europe · Wind & solar" data-tip="*986 TWh* wind & solar - 21% of Europe|region total 4,626 TWh|Ember via Our World in Data, 2024"/>
+      <text class="cell-label" x="762.9" y="399.5" font-size="9">Wind & solar 21%</text>
+      <rect class="cell" x="752.9" y="467.8" width="129.2" height="26.2" style="--o:0.15;opacity:var(--o)" data-tip-label="Europe · Other" data-tip="*326 TWh* other - 7% of Europe|region total 4,626 TWh|Ember via Our World in Data, 2024"/>
+      <text class="name" x="762.9" y="484.8" font-size="9">Other 7%</text>
+      <text class="name" x="817.5" y="520" font-size="11" text-anchor="middle">Europe</text>
+      <text class="sub" x="817.5" y="536" font-size="8" text-anchor="middle">4.6k TWh</text>
+      <rect class="cell" x="885.1" y="96.0" width="34.7" height="10.8" style="--o:0.8;opacity:var(--o)" data-tip-label="South America · Coal" data-tip="*42 TWh* coal - 3% of South America|region total 1,320 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell" x="885.1" y="108.8" width="34.7" height="58.5" style="--o:0.55;opacity:var(--o)" data-tip-label="South America · Gas" data-tip="*200 TWh* gas - 15% of South America|region total 1,320 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell" x="885.1" y="169.3" width="34.7" height="209.0" style="--o:0.38;opacity:var(--o)" data-tip-label="South America · Hydro" data-tip="*697 TWh* hydro - 53% of South America|region total 1,320 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell" x="885.1" y="380.3" width="34.7" height="5.9" style="--o:0.26;opacity:var(--o)" data-tip-label="South America · Nuclear" data-tip="*26 TWh* nuclear - 2% of South America|region total 1,320 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell-focal" x="885.1" y="388.3" width="34.7" height="71.9" data-tip-label="South America · Wind & solar" data-tip="*244 TWh* wind & solar - 18% of South America|region total 1,320 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell" x="885.1" y="462.2" width="34.7" height="31.8" style="--o:0.15;opacity:var(--o)" data-tip-label="South America · Other" data-tip="*112 TWh* other - 8% of South America|region total 1,320 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell" x="922.9" y="96.0" width="24.5" height="100.0" style="--o:0.8;opacity:var(--o)" data-tip-label="Africa · Coal" data-tip="*245 TWh* coal - 25% of Africa|region total 962 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell" x="922.9" y="198.0" width="24.5" height="167.9" style="--o:0.55;opacity:var(--o)" data-tip-label="Africa · Gas" data-tip="*409 TWh* gas - 42% of Africa|region total 962 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell" x="922.9" y="367.9" width="24.5" height="66.6" style="--o:0.38;opacity:var(--o)" data-tip-label="Africa · Hydro" data-tip="*165 TWh* hydro - 17% of Africa|region total 962 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell" x="922.9" y="436.5" width="24.5" height="1.2" style="--o:0.26;opacity:var(--o)" data-tip-label="Africa · Nuclear" data-tip="*8 TWh* nuclear - 1% of Africa|region total 962 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell-focal" x="922.9" y="439.8" width="24.5" height="24.6" data-tip-label="Africa · Wind & solar" data-tip="*64 TWh* wind & solar - 7% of Africa|region total 962 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell" x="922.9" y="466.4" width="24.5" height="27.6" style="--o:0.15;opacity:var(--o)" data-tip-label="Africa · Other" data-tip="*71 TWh* other - 7% of Africa|region total 962 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell" x="950.3" y="96.0" width="6.7" height="151.5" style="--o:0.8;opacity:var(--o)" data-tip-label="Oceania · Coal" data-tip="*130 TWh* coal - 38% of Oceania|region total 338 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell" x="950.3" y="249.5" width="6.7" height="62.3" style="--o:0.55;opacity:var(--o)" data-tip-label="Oceania · Gas" data-tip="*54 TWh* gas - 16% of Oceania|region total 338 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell" x="950.3" y="313.8" width="6.7" height="43.8" style="--o:0.38;opacity:var(--o)" data-tip-label="Oceania · Hydro" data-tip="*39 TWh* hydro - 11% of Oceania|region total 338 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell" x="950.3" y="359.6" width="6.7" height="1.0" style="--o:0.26;opacity:var(--o)" data-tip-label="Oceania · Nuclear" data-tip="*0 TWh* nuclear - 0% of Oceania|region total 338 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell-focal" x="950.3" y="359.6" width="6.7" height="102.5" data-tip-label="Oceania · Wind & solar" data-tip="*88 TWh* wind & solar - 26% of Oceania|region total 338 TWh|Ember via Our World in Data, 2024"/>
+      <rect class="cell" x="950.3" y="464.1" width="6.7" height="29.9" style="--o:0.15;opacity:var(--o)" data-tip-label="Oceania · Other" data-tip="*27 TWh* other - 8% of Oceania|region total 338 TWh|Ember via Our World in Data, 2024"/>
+      <text class="sub" x="60" y="560" font-size="8" letter-spacing="0.06em">COLUMN WIDTH = REGION SHARE OF WORLD GENERATION · SEGMENT HEIGHT = SOURCE SHARE WITHIN REGION · EMBER VIA OUR WORLD IN DATA, 2024 · SMALL REGIONS UNLABELLED, NOT OMITTED</text>
+    </svg>
+  </div>
+</body>
+</html>

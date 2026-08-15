@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>One stripe per year since 1850</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper: #f5f5f5;   --color-paper-2: #ececec;
+      --color-ink: #2d3142;     --color-muted: #4f5d75;
+      --color-soft: #7a8399;    --color-rule: rgba(45,49,66,0.12);
+      --color-rule-solid: #bfc0c0;
+      --color-accent: #eb6c36;  --color-accent-tint: rgba(235,108,54,0.08);
+      --color-link: #2e5aa8;    --color-surface: #ffffff;
+      --color-shadow: rgba(45,49,66,0.14);   /* ink-derived */
+      --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    html[data-theme="dark"] {
+      --color-paper: #2d3142;   --color-paper-2: #393e53;
+      --color-ink: #f5f5f5;     --color-muted: #bfc0c0;
+      --color-soft: #8e98ac;    --color-rule: rgba(245,245,245,0.12);
+      --color-rule-solid: rgba(191,192,192,0.25);
+      --color-accent: #f08a59;  --color-accent-tint: rgba(240,138,89,0.10);
+      --color-link: #6a95d8;    --color-surface: #393e53;
+      --color-shadow: rgba(45,49,66,0);      /* no blur on dark - the border carries the edge */
+    }
+    body { font-family: var(--font-sans); background: var(--color-paper);
+           color: var(--color-ink); min-height: 100vh; display: flex;
+           align-items: center; justify-content: center; padding: 3rem 2rem;
+           transition: background 220ms var(--ease-out); }
+    .frame { max-width: 1200px; width: 100%; position: relative; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+               letter-spacing: 0.18em; text-transform: uppercase;
+               color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+         font-weight: 400; letter-spacing: -0.02em; line-height: 1.15;
+         color: var(--color-ink); margin-bottom: 0.25rem; }
+    .standfirst { font-size: 0.875rem; color: var(--color-muted);
+                  margin-bottom: 1.5rem; max-width: 68ch; }
+    .theme-toggle { position: absolute; top: 0; right: 0;
+      font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+      letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-muted);
+      background: transparent; border: 1px solid var(--color-rule-solid);
+      border-radius: 4px; padding: 0.375rem 0.75rem; cursor: pointer;
+      transition: color 140ms var(--ease-out); }
+    .theme-toggle:hover { color: var(--color-ink); }
+    svg { width: 100%; min-width: 900px; display: block; }
+    text.name  { font-family: var(--font-sans); font-weight: 600; }
+    text.serif { font-family: var(--font-serif); }
+    text.sub, text.axis-label { font-family: var(--font-mono); }
+    .mask { fill: var(--color-paper); }
+    .name { fill: var(--color-ink); }
+    .sub  { fill: var(--color-muted); }
+    .faint { fill: var(--color-soft); }
+    .grid { stroke: var(--color-rule); }
+    .axis { stroke: var(--color-soft); }
+    .cell       { fill: var(--color-ink); }
+    .cell-focal { fill: var(--color-accent); }
+    .cell-label { fill: var(--color-paper); font-family: var(--font-sans); font-weight: 600; }
+    .cell-sub   { fill: var(--color-paper); font-family: var(--font-mono); opacity: 0.72; }
+    .ribbon       { fill: var(--color-muted); opacity: 0.18; }
+    .ribbon-focal { fill: var(--color-accent); opacity: 0.35; }
+    .bar-node   { fill: var(--color-ink); }
+    .slope      { stroke: var(--color-muted); }
+    .slope-focal{ stroke: var(--color-accent); }
+    .dot        { fill: var(--color-ink); }
+    .dot-hollow { fill: var(--color-paper); stroke: var(--color-ink); }
+    .dot-accent { fill: var(--color-accent); }
+    .dot-accent-hollow { fill: var(--color-paper); stroke: var(--color-accent); }
+    .range      { stroke: var(--color-rule-solid); }
+    .cell-cold { fill: var(--color-link); }
+
+    [data-tip] { cursor: default; outline: none;
+      transition: fill 140ms var(--ease-out), stroke 140ms var(--ease-out),
+                  opacity 140ms var(--ease-out), filter 140ms var(--ease-out); }
+    /* Hover paints the mark ACCENT - emphasis and interaction share one
+       vocabulary. Translucent marks also lift their composited opacity via
+       the builder-stamped --o (fill swaps and filters alone move a
+       12%-opacity mark by ~2 RGB points - measured). */
+    [data-tip]:hover, [data-tip]:focus-visible {
+      fill: var(--color-accent);
+      opacity: clamp(0.4, calc(var(--o, 1) * 2.4), 1);
+    }
+    /* Line-form marks (fill="none") recolor their stroke - an accent FILL
+       would blob an arc or slope into a shape. */
+    [data-tip][fill="none"]:hover, [data-tip][fill="none"]:focus-visible,
+    line[data-tip]:hover, line[data-tip]:focus-visible {
+      fill: none; stroke: var(--color-accent);
+    }
+    /* Marks that are ALREADY accent (the focal element) respond by darkening
+       on light / lifting on dark, so nothing sits inert under the cursor. */
+    .cell-focal[data-tip]:hover, .dot-accent[data-tip]:hover,
+    .ribbon-focal[data-tip]:hover, .slope-focal[data-tip]:hover,
+    .cell-focal[data-tip]:focus-visible, .dot-accent[data-tip]:focus-visible {
+      filter: brightness(0.85);
+    }
+    html[data-theme="dark"] .cell-focal[data-tip]:hover,
+    html[data-theme="dark"] .dot-accent[data-tip]:hover {
+      filter: brightness(1.2);
+    }
+    /* Warming-stripes exemption: a cold year must never turn warm-orange
+       under the cursor - it keeps its pole and lifts opacity instead. */
+    .cell-cold[data-tip]:hover, .cell-cold[data-tip]:focus-visible {
+      fill: var(--color-link);
+    }
+    [data-tip]:focus-visible { outline: 2px solid var(--color-link); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { [data-tip] { transition: none; } }
+    .dd-tooltip {
+      position: fixed; z-index: 10; max-width: 264px; pointer-events: none;
+      background: var(--color-surface); color: var(--color-ink);
+      border: 1px solid var(--color-rule-solid); border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      box-shadow: 0 1px 0 var(--color-rule), 0 6px 16px var(--color-shadow);
+      opacity: 0; transform: translateY(2px);
+      transition: opacity 140ms var(--ease-out), transform 140ms var(--ease-out);
+      font-family: var(--font-sans); font-size: 0.75rem; line-height: 1.45;
+    }
+    .dd-tooltip.dd-show { opacity: 1; transform: none; }
+    .dd-tooltip .dd-label { font-size: 0.6rem; font-weight: 600;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--color-soft); margin-bottom: 0.25rem; font-family: var(--font-mono); }
+    .dd-tooltip .dd-line { color: var(--color-muted); }
+    .dd-tooltip .dd-line strong { color: var(--color-ink); font-weight: 600; }
+    .dd-tooltip .dd-line code { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-ink); }
+    @media (prefers-reduced-motion: reduce) { .dd-tooltip { transition: none; transform: none; } }
+  </style>
+  <script data-theme-controls>
+    (function () {
+      var q = new URLSearchParams(location.search).get('theme');
+      var sys = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      var pref = null; try { pref = localStorage.getItem('dd-theme'); } catch (e) {}
+      document.documentElement.dataset.theme = (q === 'dark' || q === 'light') ? q : (pref || sys);
+    })();
+    addEventListener('DOMContentLoaded', function () {
+      var b = document.querySelector('.theme-toggle');
+      var label = function () { b.textContent =
+        document.documentElement.dataset.theme === 'dark' ? 'Light' : 'Dark'; };
+      b.addEventListener('click', function () {
+        var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('dd-theme', next); } catch (e) {}
+        label();
+      });
+      label();
+      var tip = document.createElement('div');
+      tip.className = 'dd-tooltip'; tip.id = 'dd-tooltip';
+      tip.setAttribute('role', 'tooltip');
+      document.body.appendChild(tip);
+      var esc = function (s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+      var fmt = function (s) { return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*([^*]+)\*/g,'<strong>$1</strong>'); };
+      var show = function (el) {
+        var lines = (el.getAttribute('data-tip') || '').split('|');
+        var lab = el.getAttribute('data-tip-label');
+        var html = lab ? '<div class="dd-label">' + esc(lab) + '</div>' : '';
+        for (var i = 0; i < lines.length; i++) html += '<div class="dd-line">' + fmt(lines[i]) + '</div>';
+        tip.innerHTML = html;
+        el.setAttribute('aria-describedby', 'dd-tooltip');
+        var r = el.getBoundingClientRect();
+        tip.classList.add('dd-show');
+        var x = Math.min(Math.max(8, r.left + r.width/2 - tip.offsetWidth/2), innerWidth - tip.offsetWidth - 8);
+        var y = r.top - tip.offsetHeight - 10;
+        if (y < 8) y = r.bottom + 10;
+        tip.style.left = x + 'px'; tip.style.top = y + 'px';
+      };
+      var hide = function (el) { tip.classList.remove('dd-show'); if (el) el.removeAttribute('aria-describedby'); };
+      var ts = document.querySelectorAll('[data-tip]');
+      for (var i = 0; i < ts.length; i++) {
+        var el = ts[i];
+        if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+        el.addEventListener('pointerenter', function () { show(this); });
+        el.addEventListener('pointerleave', function () { hide(this); });
+        el.addEventListener('focus', function () { show(this); });
+        el.addEventListener('blur', function () { hide(this); });
+      }
+      addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(document.activeElement); });
+      addEventListener('scroll', function () { hide(); }, true);
+    });
+  </script>
+</head>
+<body>
+  <div class="frame">
+    <button class="theme-toggle" type="button" aria-label="Switch color theme">Dark</button>
+    <p class="eyebrow">Warming stripes · 1850-2024</p>
+    <h1>One stripe per year since 1850</h1>
+    <p class="standfirst">Ed Hawkins' famous form on this design system's own two poles: the link blue for cool years, the accent for warm ones, paper for the average. No axis needed - the drift to the right says everything.</p>
+    <svg viewBox="0 0 1000 524" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="warming-stripes-title warming-stripes-desc">
+      <title id="warming-stripes-title">One stripe per year since 1850</title>
+      <desc id="warming-stripes-desc">Warming stripes of 177 years of global temperature anomaly from 1850; blue early decades give way to increasingly intense warm stripes toward the present.</desc>
+      <rect class="mask" width="100%" height="100%"/>
+      <rect class="cell-cold" x="60.00" y="96" width="5.38" height="344" style="--o:0.27;opacity:var(--o)" data-tip-label="1850" data-tip="*-0.06°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="65.08" y="96" width="5.38" height="344" style="--o:0.07;opacity:var(--o)" data-tip-label="1851" data-tip="*+0.10°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="70.17" y="96" width="5.38" height="344" style="--o:0.09;opacity:var(--o)" data-tip-label="1852" data-tip="*+0.14°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="75.25" y="96" width="5.38" height="344" style="--o:0.07;opacity:var(--o)" data-tip-label="1853" data-tip="*+0.10°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="80.34" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1854" data-tip="*+0.07°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="85.42" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1855" data-tip="*+0.07°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="90.51" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1856" data-tip="*+0.04°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="95.59" y="96" width="5.38" height="344" style="--o:0.44;opacity:var(--o)" data-tip-label="1857" data-tip="*-0.10°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="100.68" y="96" width="5.38" height="344" style="--o:0.14;opacity:var(--o)" data-tip-label="1858" data-tip="*-0.03°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="105.76" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1859" data-tip="*+0.07°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="110.85" y="96" width="5.38" height="344" style="--o:0.19;opacity:var(--o)" data-tip-label="1860" data-tip="*-0.04°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="115.93" y="96" width="5.38" height="344" style="--o:0.43;opacity:var(--o)" data-tip-label="1861" data-tip="*-0.10°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="121.02" y="96" width="5.38" height="344" style="--o:0.82;opacity:var(--o)" data-tip-label="1862" data-tip="*-0.19°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="126.10" y="96" width="5.38" height="344" style="--o:0.08;opacity:var(--o)" data-tip-label="1863" data-tip="*-0.02°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="131.19" y="96" width="5.38" height="344" style="--o:0.56;opacity:var(--o)" data-tip-label="1864" data-tip="*-0.13°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="136.27" y="96" width="5.38" height="344" style="--o:0.12;opacity:var(--o)" data-tip-label="1865" data-tip="*-0.03°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="141.36" y="96" width="5.38" height="344" style="--o:0.16;opacity:var(--o)" data-tip-label="1866" data-tip="*-0.04°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="146.44" y="96" width="5.38" height="344" style="--o:0.15;opacity:var(--o)" data-tip-label="1867" data-tip="*-0.04°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="151.53" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1868" data-tip="*+0.00°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="156.61" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1869" data-tip="*+0.05°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="161.69" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1870" data-tip="*+0.04°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="166.78" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1871" data-tip="*-0.01°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="171.86" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1872" data-tip="*+0.05°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="176.95" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1873" data-tip="*+0.04°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="182.03" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1874" data-tip="*-0.00°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="187.12" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1875" data-tip="*-0.00°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="192.20" y="96" width="5.38" height="344" style="--o:0.20;opacity:var(--o)" data-tip-label="1876" data-tip="*-0.05°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="197.29" y="96" width="5.38" height="344" style="--o:0.18;opacity:var(--o)" data-tip-label="1877" data-tip="*+0.28°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="202.37" y="96" width="5.38" height="344" style="--o:0.24;opacity:var(--o)" data-tip-label="1878" data-tip="*+0.37°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="207.46" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1879" data-tip="*+0.08°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="212.54" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1880" data-tip="*+0.06°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="217.63" y="96" width="5.38" height="344" style="--o:0.10;opacity:var(--o)" data-tip-label="1881" data-tip="*+0.15°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="222.71" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1882" data-tip="*+0.09°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="227.80" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1883" data-tip="*+0.04°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="232.88" y="96" width="5.38" height="344" style="--o:0.47;opacity:var(--o)" data-tip-label="1884" data-tip="*-0.11°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="237.97" y="96" width="5.38" height="344" style="--o:0.40;opacity:var(--o)" data-tip-label="1885" data-tip="*-0.09°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="243.05" y="96" width="5.38" height="344" style="--o:0.19;opacity:var(--o)" data-tip-label="1886" data-tip="*-0.04°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="248.14" y="96" width="5.38" height="344" style="--o:0.53;opacity:var(--o)" data-tip-label="1887" data-tip="*-0.12°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="253.22" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1888" data-tip="*-0.01°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="258.31" y="96" width="5.38" height="344" style="--o:0.07;opacity:var(--o)" data-tip-label="1889" data-tip="*+0.11°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="263.39" y="96" width="5.38" height="344" style="--o:0.58;opacity:var(--o)" data-tip-label="1890" data-tip="*-0.14°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="268.47" y="96" width="5.38" height="344" style="--o:0.14;opacity:var(--o)" data-tip-label="1891" data-tip="*-0.03°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="273.56" y="96" width="5.38" height="344" style="--o:0.61;opacity:var(--o)" data-tip-label="1892" data-tip="*-0.14°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="278.64" y="96" width="5.38" height="344" style="--o:0.56;opacity:var(--o)" data-tip-label="1893" data-tip="*-0.13°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="283.73" y="96" width="5.38" height="344" style="--o:0.49;opacity:var(--o)" data-tip-label="1894" data-tip="*-0.11°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="288.81" y="96" width="5.38" height="344" style="--o:0.33;opacity:var(--o)" data-tip-label="1895" data-tip="*-0.08°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="293.90" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1896" data-tip="*+0.09°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="298.98" y="96" width="5.38" height="344" style="--o:0.07;opacity:var(--o)" data-tip-label="1897" data-tip="*+0.11°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="304.07" y="96" width="5.38" height="344" style="--o:0.47;opacity:var(--o)" data-tip-label="1898" data-tip="*-0.11°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="309.15" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1899" data-tip="*+0.02°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="314.24" y="96" width="5.38" height="344" style="--o:0.09;opacity:var(--o)" data-tip-label="1900" data-tip="*+0.13°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="319.32" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1901" data-tip="*+0.08°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="324.41" y="96" width="5.38" height="344" style="--o:0.32;opacity:var(--o)" data-tip-label="1902" data-tip="*-0.07°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="329.49" y="96" width="5.38" height="344" style="--o:0.73;opacity:var(--o)" data-tip-label="1903" data-tip="*-0.17°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="334.58" y="96" width="5.38" height="344" style="--o:1.00;opacity:var(--o)" data-tip-label="1904" data-tip="*-0.23°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="339.66" y="96" width="5.38" height="344" style="--o:0.18;opacity:var(--o)" data-tip-label="1905" data-tip="*-0.04°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="344.75" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1906" data-tip="*+0.05°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="349.83" y="96" width="5.38" height="344" style="--o:0.58;opacity:var(--o)" data-tip-label="1907" data-tip="*-0.14°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="354.92" y="96" width="5.38" height="344" style="--o:0.61;opacity:var(--o)" data-tip-label="1908" data-tip="*-0.14°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="360.00" y="96" width="5.38" height="344" style="--o:0.72;opacity:var(--o)" data-tip-label="1909" data-tip="*-0.17°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="365.08" y="96" width="5.38" height="344" style="--o:0.68;opacity:var(--o)" data-tip-label="1910" data-tip="*-0.16°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="370.17" y="96" width="5.38" height="344" style="--o:0.75;opacity:var(--o)" data-tip-label="1911" data-tip="*-0.18°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="375.25" y="96" width="5.38" height="344" style="--o:0.48;opacity:var(--o)" data-tip-label="1912" data-tip="*-0.11°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="380.34" y="96" width="5.38" height="344" style="--o:0.43;opacity:var(--o)" data-tip-label="1913" data-tip="*-0.10°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="385.42" y="96" width="5.38" height="344" style="--o:0.07;opacity:var(--o)" data-tip-label="1914" data-tip="*+0.10°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="390.51" y="96" width="5.38" height="344" style="--o:0.11;opacity:var(--o)" data-tip-label="1915" data-tip="*+0.17°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="395.59" y="96" width="5.38" height="344" style="--o:0.24;opacity:var(--o)" data-tip-label="1916" data-tip="*-0.06°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="400.68" y="96" width="5.38" height="344" style="--o:0.77;opacity:var(--o)" data-tip-label="1917" data-tip="*-0.18°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="405.76" y="96" width="5.38" height="344" style="--o:0.27;opacity:var(--o)" data-tip-label="1918" data-tip="*-0.06°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="410.85" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1919" data-tip="*+0.03°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="415.93" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1920" data-tip="*+0.06°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="421.02" y="96" width="5.38" height="344" style="--o:0.08;opacity:var(--o)" data-tip-label="1921" data-tip="*+0.12°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="426.10" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1922" data-tip="*+0.03°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="431.19" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1923" data-tip="*+0.05°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="436.27" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1924" data-tip="*+0.06°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="441.36" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1925" data-tip="*+0.08°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="446.44" y="96" width="5.38" height="344" style="--o:0.16;opacity:var(--o)" data-tip-label="1926" data-tip="*+0.24°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="451.53" y="96" width="5.38" height="344" style="--o:0.09;opacity:var(--o)" data-tip-label="1927" data-tip="*+0.14°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="456.61" y="96" width="5.38" height="344" style="--o:0.10;opacity:var(--o)" data-tip-label="1928" data-tip="*+0.16°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-cold" x="461.69" y="96" width="5.38" height="344" style="--o:0.11;opacity:var(--o)" data-tip-label="1929" data-tip="*-0.03°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="466.78" y="96" width="5.38" height="344" style="--o:0.13;opacity:var(--o)" data-tip-label="1930" data-tip="*+0.19°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="471.86" y="96" width="5.38" height="344" style="--o:0.17;opacity:var(--o)" data-tip-label="1931" data-tip="*+0.26°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="476.95" y="96" width="5.38" height="344" style="--o:0.14;opacity:var(--o)" data-tip-label="1932" data-tip="*+0.21°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="482.03" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1933" data-tip="*+0.04°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="487.12" y="96" width="5.38" height="344" style="--o:0.12;opacity:var(--o)" data-tip-label="1934" data-tip="*+0.19°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="492.20" y="96" width="5.38" height="344" style="--o:0.10;opacity:var(--o)" data-tip-label="1935" data-tip="*+0.15°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="497.29" y="96" width="5.38" height="344" style="--o:0.13;opacity:var(--o)" data-tip-label="1936" data-tip="*+0.19°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="502.37" y="96" width="5.38" height="344" style="--o:0.23;opacity:var(--o)" data-tip-label="1937" data-tip="*+0.35°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="507.46" y="96" width="5.38" height="344" style="--o:0.23;opacity:var(--o)" data-tip-label="1938" data-tip="*+0.35°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="512.54" y="96" width="5.38" height="344" style="--o:0.21;opacity:var(--o)" data-tip-label="1939" data-tip="*+0.32°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="517.63" y="96" width="5.38" height="344" style="--o:0.29;opacity:var(--o)" data-tip-label="1940" data-tip="*+0.44°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="522.71" y="96" width="5.38" height="344" style="--o:0.26;opacity:var(--o)" data-tip-label="1941" data-tip="*+0.40°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="527.80" y="96" width="5.38" height="344" style="--o:0.24;opacity:var(--o)" data-tip-label="1942" data-tip="*+0.36°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="532.88" y="96" width="5.38" height="344" style="--o:0.24;opacity:var(--o)" data-tip-label="1943" data-tip="*+0.37°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="537.97" y="96" width="5.38" height="344" style="--o:0.33;opacity:var(--o)" data-tip-label="1944" data-tip="*+0.51°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="543.05" y="96" width="5.38" height="344" style="--o:0.27;opacity:var(--o)" data-tip-label="1945" data-tip="*+0.41°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="548.14" y="96" width="5.38" height="344" style="--o:0.16;opacity:var(--o)" data-tip-label="1946" data-tip="*+0.24°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="553.22" y="96" width="5.38" height="344" style="--o:0.17;opacity:var(--o)" data-tip-label="1947" data-tip="*+0.27°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="558.31" y="96" width="5.38" height="344" style="--o:0.15;opacity:var(--o)" data-tip-label="1948" data-tip="*+0.23°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="563.39" y="96" width="5.38" height="344" style="--o:0.14;opacity:var(--o)" data-tip-label="1949" data-tip="*+0.21°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="568.47" y="96" width="5.38" height="344" style="--o:0.08;opacity:var(--o)" data-tip-label="1950" data-tip="*+0.12°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="573.56" y="96" width="5.38" height="344" style="--o:0.19;opacity:var(--o)" data-tip-label="1951" data-tip="*+0.29°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="578.64" y="96" width="5.38" height="344" style="--o:0.24;opacity:var(--o)" data-tip-label="1952" data-tip="*+0.37°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="583.73" y="96" width="5.38" height="344" style="--o:0.29;opacity:var(--o)" data-tip-label="1953" data-tip="*+0.44°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="588.81" y="96" width="5.38" height="344" style="--o:0.16;opacity:var(--o)" data-tip-label="1954" data-tip="*+0.25°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="593.90" y="96" width="5.38" height="344" style="--o:0.11;opacity:var(--o)" data-tip-label="1955" data-tip="*+0.17°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="598.98" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1956" data-tip="*+0.10°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="604.07" y="96" width="5.38" height="344" style="--o:0.21;opacity:var(--o)" data-tip-label="1957" data-tip="*+0.33°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="609.15" y="96" width="5.38" height="344" style="--o:0.23;opacity:var(--o)" data-tip-label="1958" data-tip="*+0.35°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="614.24" y="96" width="5.38" height="344" style="--o:0.21;opacity:var(--o)" data-tip-label="1959" data-tip="*+0.32°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="619.32" y="96" width="5.38" height="344" style="--o:0.16;opacity:var(--o)" data-tip-label="1960" data-tip="*+0.25°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="624.41" y="96" width="5.38" height="344" style="--o:0.23;opacity:var(--o)" data-tip-label="1961" data-tip="*+0.35°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="629.49" y="96" width="5.38" height="344" style="--o:0.20;opacity:var(--o)" data-tip-label="1962" data-tip="*+0.31°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="634.58" y="96" width="5.38" height="344" style="--o:0.22;opacity:var(--o)" data-tip-label="1963" data-tip="*+0.33°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="639.66" y="96" width="5.38" height="344" style="--o:0.06;opacity:var(--o)" data-tip-label="1964" data-tip="*+0.06°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="644.75" y="96" width="5.38" height="344" style="--o:0.11;opacity:var(--o)" data-tip-label="1965" data-tip="*+0.16°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="649.83" y="96" width="5.38" height="344" style="--o:0.14;opacity:var(--o)" data-tip-label="1966" data-tip="*+0.22°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="654.92" y="96" width="5.38" height="344" style="--o:0.16;opacity:var(--o)" data-tip-label="1967" data-tip="*+0.25°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="660.00" y="96" width="5.38" height="344" style="--o:0.13;opacity:var(--o)" data-tip-label="1968" data-tip="*+0.20°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="665.08" y="96" width="5.38" height="344" style="--o:0.22;opacity:var(--o)" data-tip-label="1969" data-tip="*+0.34°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="670.17" y="96" width="5.38" height="344" style="--o:0.18;opacity:var(--o)" data-tip-label="1970" data-tip="*+0.28°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="675.25" y="96" width="5.38" height="344" style="--o:0.10;opacity:var(--o)" data-tip-label="1971" data-tip="*+0.16°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="680.34" y="96" width="5.38" height="344" style="--o:0.18;opacity:var(--o)" data-tip-label="1972" data-tip="*+0.27°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="685.42" y="96" width="5.38" height="344" style="--o:0.27;opacity:var(--o)" data-tip-label="1973" data-tip="*+0.42°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="690.51" y="96" width="5.38" height="344" style="--o:0.13;opacity:var(--o)" data-tip-label="1974" data-tip="*+0.20°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="695.59" y="96" width="5.38" height="344" style="--o:0.17;opacity:var(--o)" data-tip-label="1975" data-tip="*+0.26°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="700.68" y="96" width="5.38" height="344" style="--o:0.10;opacity:var(--o)" data-tip-label="1976" data-tip="*+0.15°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="705.76" y="96" width="5.38" height="344" style="--o:0.31;opacity:var(--o)" data-tip-label="1977" data-tip="*+0.47°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="710.85" y="96" width="5.38" height="344" style="--o:0.24;opacity:var(--o)" data-tip-label="1978" data-tip="*+0.37°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="715.93" y="96" width="5.38" height="344" style="--o:0.29;opacity:var(--o)" data-tip-label="1979" data-tip="*+0.45°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="721.02" y="96" width="5.38" height="344" style="--o:0.36;opacity:var(--o)" data-tip-label="1980" data-tip="*+0.56°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="726.10" y="96" width="5.38" height="344" style="--o:0.40;opacity:var(--o)" data-tip-label="1981" data-tip="*+0.61°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="731.19" y="96" width="5.38" height="344" style="--o:0.26;opacity:var(--o)" data-tip-label="1982" data-tip="*+0.39°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="736.27" y="96" width="5.38" height="344" style="--o:0.38;opacity:var(--o)" data-tip-label="1983" data-tip="*+0.58°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="741.36" y="96" width="5.38" height="344" style="--o:0.27;opacity:var(--o)" data-tip-label="1984" data-tip="*+0.41°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="746.44" y="96" width="5.38" height="344" style="--o:0.27;opacity:var(--o)" data-tip-label="1985" data-tip="*+0.41°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="751.53" y="96" width="5.38" height="344" style="--o:0.30;opacity:var(--o)" data-tip-label="1986" data-tip="*+0.46°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="756.61" y="96" width="5.38" height="344" style="--o:0.39;opacity:var(--o)" data-tip-label="1987" data-tip="*+0.60°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="761.69" y="96" width="5.38" height="344" style="--o:0.42;opacity:var(--o)" data-tip-label="1988" data-tip="*+0.64°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="766.78" y="96" width="5.38" height="344" style="--o:0.35;opacity:var(--o)" data-tip-label="1989" data-tip="*+0.54°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="771.86" y="96" width="5.38" height="344" style="--o:0.47;opacity:var(--o)" data-tip-label="1990" data-tip="*+0.72°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="776.95" y="96" width="5.38" height="344" style="--o:0.46;opacity:var(--o)" data-tip-label="1991" data-tip="*+0.70°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="782.03" y="96" width="5.38" height="344" style="--o:0.32;opacity:var(--o)" data-tip-label="1992" data-tip="*+0.48°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="787.12" y="96" width="5.38" height="344" style="--o:0.34;opacity:var(--o)" data-tip-label="1993" data-tip="*+0.53°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="792.20" y="96" width="5.38" height="344" style="--o:0.39;opacity:var(--o)" data-tip-label="1994" data-tip="*+0.59°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="797.29" y="96" width="5.38" height="344" style="--o:0.48;opacity:var(--o)" data-tip-label="1995" data-tip="*+0.74°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="802.37" y="96" width="5.38" height="344" style="--o:0.41;opacity:var(--o)" data-tip-label="1996" data-tip="*+0.63°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="807.46" y="96" width="5.38" height="344" style="--o:0.51;opacity:var(--o)" data-tip-label="1997" data-tip="*+0.78°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="812.54" y="96" width="5.38" height="344" style="--o:0.61;opacity:var(--o)" data-tip-label="1998" data-tip="*+0.94°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="817.63" y="96" width="5.38" height="344" style="--o:0.44;opacity:var(--o)" data-tip-label="1999" data-tip="*+0.68°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="822.71" y="96" width="5.38" height="344" style="--o:0.45;opacity:var(--o)" data-tip-label="2000" data-tip="*+0.69°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="827.80" y="96" width="5.38" height="344" style="--o:0.55;opacity:var(--o)" data-tip-label="2001" data-tip="*+0.85°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="832.88" y="96" width="5.38" height="344" style="--o:0.59;opacity:var(--o)" data-tip-label="2002" data-tip="*+0.90°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="837.97" y="96" width="5.38" height="344" style="--o:0.59;opacity:var(--o)" data-tip-label="2003" data-tip="*+0.90°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="843.05" y="96" width="5.38" height="344" style="--o:0.54;opacity:var(--o)" data-tip-label="2004" data-tip="*+0.83°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="848.14" y="96" width="5.38" height="344" style="--o:0.63;opacity:var(--o)" data-tip-label="2005" data-tip="*+0.97°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="853.22" y="96" width="5.38" height="344" style="--o:0.61;opacity:var(--o)" data-tip-label="2006" data-tip="*+0.93°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="858.31" y="96" width="5.38" height="344" style="--o:0.62;opacity:var(--o)" data-tip-label="2007" data-tip="*+0.95°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="863.39" y="96" width="5.38" height="344" style="--o:0.54;opacity:var(--o)" data-tip-label="2008" data-tip="*+0.82°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="868.47" y="96" width="5.38" height="344" style="--o:0.62;opacity:var(--o)" data-tip-label="2009" data-tip="*+0.95°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="873.56" y="96" width="5.38" height="344" style="--o:0.68;opacity:var(--o)" data-tip-label="2010" data-tip="*+1.04°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="878.64" y="96" width="5.38" height="344" style="--o:0.58;opacity:var(--o)" data-tip-label="2011" data-tip="*+0.90°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="883.73" y="96" width="5.38" height="344" style="--o:0.61;opacity:var(--o)" data-tip-label="2012" data-tip="*+0.94°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="888.81" y="96" width="5.38" height="344" style="--o:0.64;opacity:var(--o)" data-tip-label="2013" data-tip="*+0.98°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="893.90" y="96" width="5.38" height="344" style="--o:0.67;opacity:var(--o)" data-tip-label="2014" data-tip="*+1.03°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="898.98" y="96" width="5.38" height="344" style="--o:0.77;opacity:var(--o)" data-tip-label="2015" data-tip="*+1.18°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="904.07" y="96" width="5.38" height="344" style="--o:0.84;opacity:var(--o)" data-tip-label="2016" data-tip="*+1.29°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="909.15" y="96" width="5.38" height="344" style="--o:0.78;opacity:var(--o)" data-tip-label="2017" data-tip="*+1.20°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="914.24" y="96" width="5.38" height="344" style="--o:0.73;opacity:var(--o)" data-tip-label="2018" data-tip="*+1.12°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="919.32" y="96" width="5.38" height="344" style="--o:0.82;opacity:var(--o)" data-tip-label="2019" data-tip="*+1.25°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="924.41" y="96" width="5.38" height="344" style="--o:0.84;opacity:var(--o)" data-tip-label="2020" data-tip="*+1.28°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="929.49" y="96" width="5.38" height="344" style="--o:0.74;opacity:var(--o)" data-tip-label="2021" data-tip="*+1.13°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="934.58" y="96" width="5.38" height="344" style="--o:0.76;opacity:var(--o)" data-tip-label="2022" data-tip="*+1.17°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="939.66" y="96" width="5.38" height="344" style="--o:0.96;opacity:var(--o)" data-tip-label="2023" data-tip="*+1.47°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="944.75" y="96" width="5.38" height="344" style="--o:1.00;opacity:var(--o)" data-tip-label="2024" data-tip="*+1.53°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="949.83" y="96" width="5.38" height="344" style="--o:0.92;opacity:var(--o)" data-tip-label="2025" data-tip="*+1.41°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <rect class="cell-focal" x="954.92" y="96" width="5.38" height="344" style="--o:0.91;opacity:var(--o)" data-tip-label="2026" data-tip="*+1.39°C* vs 1961-1990 average|HadCRUT5 via Our World in Data"/>
+      <text class="sub" x="60" y="464" font-size="8" letter-spacing="0.1em">1850</text>
+      <text class="sub" x="314" y="464" font-size="8" letter-spacing="0.1em">1900</text>
+      <text class="sub" x="568" y="464" font-size="8" letter-spacing="0.1em">1950</text>
+      <text class="sub" x="823" y="464" font-size="8" letter-spacing="0.1em">2000</text>
+      <text class="sub" x="945" y="464" font-size="8" letter-spacing="0.1em">2024</text>
+      <text class="sub" x="60" y="500" font-size="8" letter-spacing="0.06em">ONE STRIPE = ONE YEAR (177 YEARS) · ANOMALY VS 1961-1990 MEAN, -0.23 TO +1.53°C · HADCRUT5 VIA OUR WORLD IN DATA · AFTER ED HAWKINS</text>
+    </svg>
+  </div>
+</body>
+</html>

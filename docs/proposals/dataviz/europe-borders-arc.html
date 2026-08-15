@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Who borders whom</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper: #f5f5f5;   --color-paper-2: #ececec;
+      --color-ink: #2d3142;     --color-muted: #4f5d75;
+      --color-soft: #7a8399;    --color-rule: rgba(45,49,66,0.12);
+      --color-rule-solid: #bfc0c0;
+      --color-accent: #eb6c36;  --color-accent-tint: rgba(235,108,54,0.08);
+      --color-link: #2e5aa8;    --color-surface: #ffffff;
+      --color-shadow: rgba(45,49,66,0.14);   /* ink-derived */
+      --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    html[data-theme="dark"] {
+      --color-paper: #2d3142;   --color-paper-2: #393e53;
+      --color-ink: #f5f5f5;     --color-muted: #bfc0c0;
+      --color-soft: #8e98ac;    --color-rule: rgba(245,245,245,0.12);
+      --color-rule-solid: rgba(191,192,192,0.25);
+      --color-accent: #f08a59;  --color-accent-tint: rgba(240,138,89,0.10);
+      --color-link: #6a95d8;    --color-surface: #393e53;
+      --color-shadow: rgba(45,49,66,0);      /* no blur on dark - the border carries the edge */
+    }
+    body { font-family: var(--font-sans); background: var(--color-paper);
+           color: var(--color-ink); min-height: 100vh; display: flex;
+           align-items: center; justify-content: center; padding: 3rem 2rem;
+           transition: background 220ms var(--ease-out); }
+    .frame { max-width: 1200px; width: 100%; position: relative; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+               letter-spacing: 0.18em; text-transform: uppercase;
+               color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+         font-weight: 400; letter-spacing: -0.02em; line-height: 1.15;
+         color: var(--color-ink); margin-bottom: 0.25rem; }
+    .standfirst { font-size: 0.875rem; color: var(--color-muted);
+                  margin-bottom: 1.5rem; max-width: 68ch; }
+    .theme-toggle { position: absolute; top: 0; right: 0;
+      font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+      letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-muted);
+      background: transparent; border: 1px solid var(--color-rule-solid);
+      border-radius: 4px; padding: 0.375rem 0.75rem; cursor: pointer;
+      transition: color 140ms var(--ease-out); }
+    .theme-toggle:hover { color: var(--color-ink); }
+    svg { width: 100%; min-width: 900px; display: block; }
+    text.name  { font-family: var(--font-sans); font-weight: 600; }
+    text.serif { font-family: var(--font-serif); }
+    text.sub, text.axis-label { font-family: var(--font-mono); }
+    .mask { fill: var(--color-paper); }
+    .name { fill: var(--color-ink); }
+    .sub  { fill: var(--color-muted); }
+    .faint { fill: var(--color-soft); }
+    .grid { stroke: var(--color-rule); }
+    .axis { stroke: var(--color-soft); }
+    .cell       { fill: var(--color-ink); }
+    .cell-focal { fill: var(--color-accent); }
+    .cell-label { fill: var(--color-paper); font-family: var(--font-sans); font-weight: 600; }
+    .cell-sub   { fill: var(--color-paper); font-family: var(--font-mono); opacity: 0.72; }
+    .ribbon       { fill: var(--color-muted); opacity: 0.18; }
+    .ribbon-focal { fill: var(--color-accent); opacity: 0.35; }
+    .bar-node   { fill: var(--color-ink); }
+    .slope      { stroke: var(--color-muted); }
+    .slope-focal{ stroke: var(--color-accent); }
+    .dot        { fill: var(--color-ink); }
+    .dot-hollow { fill: var(--color-paper); stroke: var(--color-ink); }
+    .dot-accent { fill: var(--color-accent); }
+    .dot-accent-hollow { fill: var(--color-paper); stroke: var(--color-accent); }
+    .range      { stroke: var(--color-rule-solid); }
+    [data-tip] { cursor: default; outline: none;
+      transition: fill 140ms var(--ease-out), stroke 140ms var(--ease-out),
+                  opacity 140ms var(--ease-out), filter 140ms var(--ease-out); }
+    /* Hover paints the mark ACCENT - emphasis and interaction share one
+       vocabulary. Translucent marks also lift their composited opacity via
+       the builder-stamped --o (fill swaps and filters alone move a
+       12%-opacity mark by ~2 RGB points - measured). */
+    [data-tip]:hover, [data-tip]:focus-visible {
+      fill: var(--color-accent);
+      opacity: clamp(0.4, calc(var(--o, 1) * 2.4), 1);
+    }
+    /* Line-form marks (fill="none") recolor their stroke - an accent FILL
+       would blob an arc or slope into a shape. */
+    [data-tip][fill="none"]:hover, [data-tip][fill="none"]:focus-visible,
+    line[data-tip]:hover, line[data-tip]:focus-visible {
+      fill: none; stroke: var(--color-accent);
+    }
+    /* Marks that are ALREADY accent (the focal element) respond by darkening
+       on light / lifting on dark, so nothing sits inert under the cursor. */
+    .cell-focal[data-tip]:hover, .dot-accent[data-tip]:hover,
+    .ribbon-focal[data-tip]:hover, .slope-focal[data-tip]:hover,
+    .cell-focal[data-tip]:focus-visible, .dot-accent[data-tip]:focus-visible {
+      filter: brightness(0.85);
+    }
+    html[data-theme="dark"] .cell-focal[data-tip]:hover,
+    html[data-theme="dark"] .dot-accent[data-tip]:hover {
+      filter: brightness(1.2);
+    }
+    /* Warming-stripes exemption: a cold year must never turn warm-orange
+       under the cursor - it keeps its pole and lifts opacity instead. */
+    .cell-cold[data-tip]:hover, .cell-cold[data-tip]:focus-visible {
+      fill: var(--color-link);
+    }
+    [data-tip]:focus-visible { outline: 2px solid var(--color-link); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { [data-tip] { transition: none; } }
+    .dd-tooltip {
+      position: fixed; z-index: 10; max-width: 264px; pointer-events: none;
+      background: var(--color-surface); color: var(--color-ink);
+      border: 1px solid var(--color-rule-solid); border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      box-shadow: 0 1px 0 var(--color-rule), 0 6px 16px var(--color-shadow);
+      opacity: 0; transform: translateY(2px);
+      transition: opacity 140ms var(--ease-out), transform 140ms var(--ease-out);
+      font-family: var(--font-sans); font-size: 0.75rem; line-height: 1.45;
+    }
+    .dd-tooltip.dd-show { opacity: 1; transform: none; }
+    .dd-tooltip .dd-label { font-size: 0.6rem; font-weight: 600;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--color-soft); margin-bottom: 0.25rem; font-family: var(--font-mono); }
+    .dd-tooltip .dd-line { color: var(--color-muted); }
+    .dd-tooltip .dd-line strong { color: var(--color-ink); font-weight: 600; }
+    .dd-tooltip .dd-line code { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-ink); }
+    @media (prefers-reduced-motion: reduce) { .dd-tooltip { transition: none; transform: none; } }
+  </style>
+  <script data-theme-controls>
+    (function () {
+      var q = new URLSearchParams(location.search).get('theme');
+      var sys = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      var pref = null; try { pref = localStorage.getItem('dd-theme'); } catch (e) {}
+      document.documentElement.dataset.theme = (q === 'dark' || q === 'light') ? q : (pref || sys);
+    })();
+    addEventListener('DOMContentLoaded', function () {
+      var b = document.querySelector('.theme-toggle');
+      var label = function () { b.textContent =
+        document.documentElement.dataset.theme === 'dark' ? 'Light' : 'Dark'; };
+      b.addEventListener('click', function () {
+        var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('dd-theme', next); } catch (e) {}
+        label();
+      });
+      label();
+      var tip = document.createElement('div');
+      tip.className = 'dd-tooltip'; tip.id = 'dd-tooltip';
+      tip.setAttribute('role', 'tooltip');
+      document.body.appendChild(tip);
+      var esc = function (s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+      var fmt = function (s) { return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*([^*]+)\*/g,'<strong>$1</strong>'); };
+      var show = function (el) {
+        var lines = (el.getAttribute('data-tip') || '').split('|');
+        var lab = el.getAttribute('data-tip-label');
+        var html = lab ? '<div class="dd-label">' + esc(lab) + '</div>' : '';
+        for (var i = 0; i < lines.length; i++) html += '<div class="dd-line">' + fmt(lines[i]) + '</div>';
+        tip.innerHTML = html;
+        el.setAttribute('aria-describedby', 'dd-tooltip');
+        var r = el.getBoundingClientRect();
+        tip.classList.add('dd-show');
+        var x = Math.min(Math.max(8, r.left + r.width/2 - tip.offsetWidth/2), innerWidth - tip.offsetWidth - 8);
+        var y = r.top - tip.offsetHeight - 10;
+        if (y < 8) y = r.bottom + 10;
+        tip.style.left = x + 'px'; tip.style.top = y + 'px';
+      };
+      var hide = function (el) { tip.classList.remove('dd-show'); if (el) el.removeAttribute('aria-describedby'); };
+      var ts = document.querySelectorAll('[data-tip]');
+      for (var i = 0; i < ts.length; i++) {
+        var el = ts[i];
+        if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+        el.addEventListener('pointerenter', function () { show(this); });
+        el.addEventListener('pointerleave', function () { hide(this); });
+        el.addEventListener('focus', function () { show(this); });
+        el.addEventListener('blur', function () { hide(this); });
+      }
+      addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(document.activeElement); });
+      addEventListener('scroll', function () { hide(); }, true);
+    });
+  </script>
+</head>
+<body>
+  <div class="frame">
+    <button class="theme-toggle" type="button" aria-label="Switch color theme">Dark</button>
+    <p class="eyebrow">Arc diagram · shared borders</p>
+    <h1>Who borders whom</h1>
+    <p class="standfirst">Sixteen countries on one line, every shared land border an arc. The accent arcs belong to Germany - nine neighbours, the most connected country in Europe.</p>
+    <svg viewBox="0 0 1000 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="europe-borders-arc-title europe-borders-arc-desc">
+      <title id="europe-borders-arc-title">Who borders whom</title>
+      <desc id="europe-borders-arc-desc">Arc diagram of land borders among sixteen western and central European countries; Germany is the hub with nine neighbours in the set.</desc>
+      <rect class="mask" width="100%" height="100%"/>
+      <path class="slope" d="M 666.7,420 A 58.7 58.7 0 0 1 784.0,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope-focal" d="M 432.0,420 A 117.3 117.3 0 0 1 666.7,420" fill="none" stroke-width="1.5"/>
+      <path class="slope" d="M 666.7,420 A 146.7 146.7 0 0 1 960.0,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 608.0,420 A 29.3 29.3 0 0 1 666.7,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 666.7,420 A 88.0 88.0 0 0 1 842.7,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 666.7,420 A 29.3 29.3 0 0 1 725.3,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 549.3,420 A 58.7 58.7 0 0 1 666.7,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 197.3,420 A 29.3 29.3 0 0 1 256.0,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope-focal" d="M 256.0,420 A 88.0 88.0 0 0 1 432.0,420" fill="none" stroke-width="1.5"/>
+      <path class="slope" d="M 256.0,420 A 58.7 58.7 0 0 1 373.3,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 256.0,420 A 29.3 29.3 0 0 1 314.7,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope-focal" d="M 432.0,420 A 176.0 176.0 0 0 1 784.0,420" fill="none" stroke-width="1.5"/>
+      <path class="slope" d="M 784.0,420 A 58.7 58.7 0 0 1 901.3,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 784.0,420 A 29.3 29.3 0 0 1 842.7,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope-focal" d="M 432.0,420 A 29.3 29.3 0 0 1 490.7,420" fill="none" stroke-width="1.5"/>
+      <path class="slope-focal" d="M 197.3,420 A 117.3 117.3 0 0 1 432.0,420" fill="none" stroke-width="1.5"/>
+      <path class="slope" d="M 197.3,420 A 205.3 205.3 0 0 1 608.0,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 197.3,420 A 88.0 88.0 0 0 1 373.3,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 138.7,420 A 29.3 29.3 0 0 1 197.3,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 197.3,420 A 176.0 176.0 0 0 1 549.3,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope-focal" d="M 373.3,420 A 29.3 29.3 0 0 1 432.0,420" fill="none" stroke-width="1.5"/>
+      <path class="slope-focal" d="M 314.7,420 A 58.7 58.7 0 0 1 432.0,420" fill="none" stroke-width="1.5"/>
+      <path class="slope-focal" d="M 432.0,420 A 234.7 234.7 0 0 1 901.3,420" fill="none" stroke-width="1.5"/>
+      <path class="slope-focal" d="M 432.0,420 A 58.7 58.7 0 0 1 549.3,420" fill="none" stroke-width="1.5"/>
+      <path class="slope" d="M 842.7,420 A 58.7 58.7 0 0 1 960.0,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 725.3,420 A 117.3 117.3 0 0 1 960.0,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 608.0,420 A 58.7 58.7 0 0 1 725.3,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 549.3,420 A 29.3 29.3 0 0 1 608.0,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 842.7,420 A 29.3 29.3 0 0 1 901.3,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <path class="slope" d="M 80.0,420 A 29.3 29.3 0 0 1 138.7,420" fill="none" stroke-width="1" opacity="0.35"/>
+      <circle class="dot" cx="80.0" cy="420" r="4" data-tip-label="Portugal" data-tip="*1 land borders* in this set|Spain"/>
+      <text class="sub" x="80.0" y="444" font-size="8" transform="rotate(-42 80.0 444)" style="text-anchor:end">Portugal</text>
+      <circle class="dot" cx="138.7" cy="420" r="4" data-tip-label="Spain" data-tip="*2 land borders* in this set|France, Portugal"/>
+      <text class="sub" x="138.7" y="444" font-size="8" transform="rotate(-42 138.7 444)" style="text-anchor:end">Spain</text>
+      <circle class="dot" cx="197.3" cy="420" r="4" data-tip-label="France" data-tip="*6 land borders* in this set|Belgium, Germany, Italy, Luxembourg, Spain, Switzerland"/>
+      <text class="sub" x="197.3" y="444" font-size="8" transform="rotate(-42 197.3 444)" style="text-anchor:end">France</text>
+      <circle class="dot" cx="256.0" cy="420" r="4" data-tip-label="Belgium" data-tip="*4 land borders* in this set|France, Germany, Luxembourg, Netherlands"/>
+      <text class="sub" x="256.0" y="444" font-size="8" transform="rotate(-42 256.0 444)" style="text-anchor:end">Belgium</text>
+      <circle class="dot" cx="314.7" cy="420" r="4" data-tip-label="Netherlands" data-tip="*2 land borders* in this set|Belgium, Germany"/>
+      <text class="sub" x="314.7" y="444" font-size="8" transform="rotate(-42 314.7 444)" style="text-anchor:end">Netherlands</text>
+      <circle class="dot" cx="373.3" cy="420" r="4" data-tip-label="Luxembourg" data-tip="*3 land borders* in this set|Belgium, France, Germany"/>
+      <text class="sub" x="373.3" y="444" font-size="8" transform="rotate(-42 373.3 444)" style="text-anchor:end">Luxembourg</text>
+      <circle class="dot-accent" cx="432.0" cy="420" r="5" data-tip-label="Germany" data-tip="*9 land borders* in this set|Austria, Belgium, Czechia, Denmark, France, Luxembourg, Netherlands, Poland, Switzerland"/>
+      <text class="sub" x="432.0" y="444" font-size="8" transform="rotate(-42 432.0 444)" style="text-anchor:end">Germany</text>
+      <circle class="dot" cx="490.7" cy="420" r="4" data-tip-label="Denmark" data-tip="*1 land borders* in this set|Germany"/>
+      <text class="sub" x="490.7" y="444" font-size="8" transform="rotate(-42 490.7 444)" style="text-anchor:end">Denmark</text>
+      <circle class="dot" cx="549.3" cy="420" r="4" data-tip-label="Switzerland" data-tip="*4 land borders* in this set|Austria, France, Germany, Italy"/>
+      <text class="sub" x="549.3" y="444" font-size="8" transform="rotate(-42 549.3 444)" style="text-anchor:end">Switzerland</text>
+      <circle class="dot" cx="608.0" cy="420" r="4" data-tip-label="Italy" data-tip="*4 land borders* in this set|Austria, France, Slovenia, Switzerland"/>
+      <text class="sub" x="608.0" y="444" font-size="8" transform="rotate(-42 608.0 444)" style="text-anchor:end">Italy</text>
+      <circle class="dot" cx="666.7" cy="420" r="4" data-tip-label="Austria" data-tip="*7 land borders* in this set|Czechia, Germany, Hungary, Italy, Slovakia, Slovenia, Switzerland"/>
+      <text class="sub" x="666.7" y="444" font-size="8" transform="rotate(-42 666.7 444)" style="text-anchor:end">Austria</text>
+      <circle class="dot" cx="725.3" cy="420" r="4" data-tip-label="Slovenia" data-tip="*3 land borders* in this set|Austria, Hungary, Italy"/>
+      <text class="sub" x="725.3" y="444" font-size="8" transform="rotate(-42 725.3 444)" style="text-anchor:end">Slovenia</text>
+      <circle class="dot" cx="784.0" cy="420" r="4" data-tip-label="Czechia" data-tip="*4 land borders* in this set|Austria, Germany, Poland, Slovakia"/>
+      <text class="sub" x="784.0" y="444" font-size="8" transform="rotate(-42 784.0 444)" style="text-anchor:end">Czechia</text>
+      <circle class="dot" cx="842.7" cy="420" r="4" data-tip-label="Slovakia" data-tip="*4 land borders* in this set|Austria, Czechia, Hungary, Poland"/>
+      <text class="sub" x="842.7" y="444" font-size="8" transform="rotate(-42 842.7 444)" style="text-anchor:end">Slovakia</text>
+      <circle class="dot" cx="901.3" cy="420" r="4" data-tip-label="Poland" data-tip="*3 land borders* in this set|Czechia, Germany, Slovakia"/>
+      <text class="sub" x="901.3" y="444" font-size="8" transform="rotate(-42 901.3 444)" style="text-anchor:end">Poland</text>
+      <circle class="dot" cx="960.0" cy="420" r="4" data-tip-label="Hungary" data-tip="*3 land borders* in this set|Austria, Slovakia, Slovenia"/>
+      <text class="sub" x="960.0" y="444" font-size="8" transform="rotate(-42 960.0 444)" style="text-anchor:end">Hungary</text>
+      <line class="axis" x1="60" y1="420" x2="960" y2="420" stroke-width="1"/>
+      <text class="sub" x="60" y="560" font-size="8" letter-spacing="0.06em">30 SHARED LAND BORDERS AMONG 16 COUNTRIES, ORDERED ROUGHLY WEST TO EAST · MICROSTATES AND SEA BORDERS OMITTED</text>
+    </svg>
+  </div>
+</body>
+</html>

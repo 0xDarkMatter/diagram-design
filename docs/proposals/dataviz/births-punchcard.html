@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wednesdays in September</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper: #f5f5f5;   --color-paper-2: #ececec;
+      --color-ink: #2d3142;     --color-muted: #4f5d75;
+      --color-soft: #7a8399;    --color-rule: rgba(45,49,66,0.12);
+      --color-rule-solid: #bfc0c0;
+      --color-accent: #eb6c36;  --color-accent-tint: rgba(235,108,54,0.08);
+      --color-link: #2e5aa8;    --color-surface: #ffffff;
+      --color-shadow: rgba(45,49,66,0.14);   /* ink-derived */
+      --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    html[data-theme="dark"] {
+      --color-paper: #2d3142;   --color-paper-2: #393e53;
+      --color-ink: #f5f5f5;     --color-muted: #bfc0c0;
+      --color-soft: #8e98ac;    --color-rule: rgba(245,245,245,0.12);
+      --color-rule-solid: rgba(191,192,192,0.25);
+      --color-accent: #f08a59;  --color-accent-tint: rgba(240,138,89,0.10);
+      --color-link: #6a95d8;    --color-surface: #393e53;
+      --color-shadow: rgba(45,49,66,0);      /* no blur on dark - the border carries the edge */
+    }
+    body { font-family: var(--font-sans); background: var(--color-paper);
+           color: var(--color-ink); min-height: 100vh; display: flex;
+           align-items: center; justify-content: center; padding: 3rem 2rem;
+           transition: background 220ms var(--ease-out); }
+    .frame { max-width: 1200px; width: 100%; position: relative; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+               letter-spacing: 0.18em; text-transform: uppercase;
+               color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+         font-weight: 400; letter-spacing: -0.02em; line-height: 1.15;
+         color: var(--color-ink); margin-bottom: 0.25rem; }
+    .standfirst { font-size: 0.875rem; color: var(--color-muted);
+                  margin-bottom: 1.5rem; max-width: 68ch; }
+    .theme-toggle { position: absolute; top: 0; right: 0;
+      font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+      letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-muted);
+      background: transparent; border: 1px solid var(--color-rule-solid);
+      border-radius: 4px; padding: 0.375rem 0.75rem; cursor: pointer;
+      transition: color 140ms var(--ease-out); }
+    .theme-toggle:hover { color: var(--color-ink); }
+    svg { width: 100%; min-width: 900px; display: block; }
+    text.name  { font-family: var(--font-sans); font-weight: 600; }
+    text.serif { font-family: var(--font-serif); }
+    text.sub, text.axis-label { font-family: var(--font-mono); }
+    .mask { fill: var(--color-paper); }
+    .name { fill: var(--color-ink); }
+    .sub  { fill: var(--color-muted); }
+    .faint { fill: var(--color-soft); }
+    .grid { stroke: var(--color-rule); }
+    .axis { stroke: var(--color-soft); }
+    .cell       { fill: var(--color-ink); }
+    .cell-focal { fill: var(--color-accent); }
+    .cell-label { fill: var(--color-paper); font-family: var(--font-sans); font-weight: 600; }
+    .cell-sub   { fill: var(--color-paper); font-family: var(--font-mono); opacity: 0.72; }
+    .ribbon       { fill: var(--color-muted); opacity: 0.18; }
+    .ribbon-focal { fill: var(--color-accent); opacity: 0.35; }
+    .bar-node   { fill: var(--color-ink); }
+    .slope      { stroke: var(--color-muted); }
+    .slope-focal{ stroke: var(--color-accent); }
+    .dot        { fill: var(--color-ink); }
+    .dot-hollow { fill: var(--color-paper); stroke: var(--color-ink); }
+    .dot-accent { fill: var(--color-accent); }
+    .dot-accent-hollow { fill: var(--color-paper); stroke: var(--color-accent); }
+    .range      { stroke: var(--color-rule-solid); }
+    [data-tip] { cursor: default; outline: none;
+      transition: fill 140ms var(--ease-out), stroke 140ms var(--ease-out),
+                  opacity 140ms var(--ease-out), filter 140ms var(--ease-out); }
+    /* Hover paints the mark ACCENT - emphasis and interaction share one
+       vocabulary. Translucent marks also lift their composited opacity via
+       the builder-stamped --o (fill swaps and filters alone move a
+       12%-opacity mark by ~2 RGB points - measured). */
+    [data-tip]:hover, [data-tip]:focus-visible {
+      fill: var(--color-accent);
+      opacity: clamp(0.4, calc(var(--o, 1) * 2.4), 1);
+    }
+    /* Line-form marks (fill="none") recolor their stroke - an accent FILL
+       would blob an arc or slope into a shape. */
+    [data-tip][fill="none"]:hover, [data-tip][fill="none"]:focus-visible,
+    line[data-tip]:hover, line[data-tip]:focus-visible {
+      fill: none; stroke: var(--color-accent);
+    }
+    /* Marks that are ALREADY accent (the focal element) respond by darkening
+       on light / lifting on dark, so nothing sits inert under the cursor. */
+    .cell-focal[data-tip]:hover, .dot-accent[data-tip]:hover,
+    .ribbon-focal[data-tip]:hover, .slope-focal[data-tip]:hover,
+    .cell-focal[data-tip]:focus-visible, .dot-accent[data-tip]:focus-visible {
+      filter: brightness(0.85);
+    }
+    html[data-theme="dark"] .cell-focal[data-tip]:hover,
+    html[data-theme="dark"] .dot-accent[data-tip]:hover {
+      filter: brightness(1.2);
+    }
+    /* Warming-stripes exemption: a cold year must never turn warm-orange
+       under the cursor - it keeps its pole and lifts opacity instead. */
+    .cell-cold[data-tip]:hover, .cell-cold[data-tip]:focus-visible {
+      fill: var(--color-link);
+    }
+    [data-tip]:focus-visible { outline: 2px solid var(--color-link); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { [data-tip] { transition: none; } }
+    .dd-tooltip {
+      position: fixed; z-index: 10; max-width: 264px; pointer-events: none;
+      background: var(--color-surface); color: var(--color-ink);
+      border: 1px solid var(--color-rule-solid); border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      box-shadow: 0 1px 0 var(--color-rule), 0 6px 16px var(--color-shadow);
+      opacity: 0; transform: translateY(2px);
+      transition: opacity 140ms var(--ease-out), transform 140ms var(--ease-out);
+      font-family: var(--font-sans); font-size: 0.75rem; line-height: 1.45;
+    }
+    .dd-tooltip.dd-show { opacity: 1; transform: none; }
+    .dd-tooltip .dd-label { font-size: 0.6rem; font-weight: 600;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--color-soft); margin-bottom: 0.25rem; font-family: var(--font-mono); }
+    .dd-tooltip .dd-line { color: var(--color-muted); }
+    .dd-tooltip .dd-line strong { color: var(--color-ink); font-weight: 600; }
+    .dd-tooltip .dd-line code { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-ink); }
+    @media (prefers-reduced-motion: reduce) { .dd-tooltip { transition: none; transform: none; } }
+  </style>
+  <script data-theme-controls>
+    (function () {
+      var q = new URLSearchParams(location.search).get('theme');
+      var sys = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      var pref = null; try { pref = localStorage.getItem('dd-theme'); } catch (e) {}
+      document.documentElement.dataset.theme = (q === 'dark' || q === 'light') ? q : (pref || sys);
+    })();
+    addEventListener('DOMContentLoaded', function () {
+      var b = document.querySelector('.theme-toggle');
+      var label = function () { b.textContent =
+        document.documentElement.dataset.theme === 'dark' ? 'Light' : 'Dark'; };
+      b.addEventListener('click', function () {
+        var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('dd-theme', next); } catch (e) {}
+        label();
+      });
+      label();
+      var tip = document.createElement('div');
+      tip.className = 'dd-tooltip'; tip.id = 'dd-tooltip';
+      tip.setAttribute('role', 'tooltip');
+      document.body.appendChild(tip);
+      var esc = function (s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+      var fmt = function (s) { return esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*([^*]+)\*/g,'<strong>$1</strong>'); };
+      var show = function (el) {
+        var lines = (el.getAttribute('data-tip') || '').split('|');
+        var lab = el.getAttribute('data-tip-label');
+        var html = lab ? '<div class="dd-label">' + esc(lab) + '</div>' : '';
+        for (var i = 0; i < lines.length; i++) html += '<div class="dd-line">' + fmt(lines[i]) + '</div>';
+        tip.innerHTML = html;
+        el.setAttribute('aria-describedby', 'dd-tooltip');
+        var r = el.getBoundingClientRect();
+        tip.classList.add('dd-show');
+        var x = Math.min(Math.max(8, r.left + r.width/2 - tip.offsetWidth/2), innerWidth - tip.offsetWidth - 8);
+        var y = r.top - tip.offsetHeight - 10;
+        if (y < 8) y = r.bottom + 10;
+        tip.style.left = x + 'px'; tip.style.top = y + 'px';
+      };
+      var hide = function (el) { tip.classList.remove('dd-show'); if (el) el.removeAttribute('aria-describedby'); };
+      var ts = document.querySelectorAll('[data-tip]');
+      for (var i = 0; i < ts.length; i++) {
+        var el = ts[i];
+        if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+        el.addEventListener('pointerenter', function () { show(this); });
+        el.addEventListener('pointerleave', function () { hide(this); });
+        el.addEventListener('focus', function () { show(this); });
+        el.addEventListener('blur', function () { hide(this); });
+      }
+      addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(document.activeElement); });
+      addEventListener('scroll', function () { hide(); }, true);
+    });
+  </script>
+</head>
+<body>
+  <div class="frame">
+    <button class="theme-toggle" type="button" aria-label="Switch color theme">Dark</button>
+    <p class="eyebrow">Punch card · when America is born</p>
+    <h1>Wednesdays in September</h1>
+    <p class="standfirst">Fifteen years of American birth certificates in one grid. The weekend rows go pale - inductions and cesareans keep office hours - and the accent cell is the single busiest square: September Wednesdays, nine months after the winter holidays.</p>
+    <svg viewBox="0 0 1000 496" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="births-punchcard-title births-punchcard-desc">
+      <title id="births-punchcard-title">Wednesdays in September</title>
+      <desc id="births-punchcard-desc">Punch-card heatmap of average US daily births by month and weekday from 2000 to 2014; weekends are markedly quieter and September Wednesdays are the peak.</desc>
+      <rect class="mask" width="100%" height="100%"/>
+      <text class="sub" x="178" y="80" font-size="9" text-anchor="middle">Jan</text>
+      <text class="sub" x="244" y="80" font-size="9" text-anchor="middle">Feb</text>
+      <text class="sub" x="310" y="80" font-size="9" text-anchor="middle">Mar</text>
+      <text class="sub" x="376" y="80" font-size="9" text-anchor="middle">Apr</text>
+      <text class="sub" x="442" y="80" font-size="9" text-anchor="middle">May</text>
+      <text class="sub" x="508" y="80" font-size="9" text-anchor="middle">Jun</text>
+      <text class="sub" x="574" y="80" font-size="9" text-anchor="middle">Jul</text>
+      <text class="sub" x="640" y="80" font-size="9" text-anchor="middle">Aug</text>
+      <text class="sub" x="706" y="80" font-size="9" text-anchor="middle">Sep</text>
+      <text class="sub" x="772" y="80" font-size="9" text-anchor="middle">Oct</text>
+      <text class="sub" x="838" y="80" font-size="9" text-anchor="middle">Nov</text>
+      <text class="sub" x="904" y="80" font-size="9" text-anchor="middle">Dec</text>
+      <text class="name" x="128" y="122" font-size="11" text-anchor="end">Mon</text>
+      <text class="name" x="128" y="172" font-size="11" text-anchor="end">Tue</text>
+      <text class="name" x="128" y="222" font-size="11" text-anchor="end">Wed</text>
+      <text class="name" x="128" y="272" font-size="11" text-anchor="end">Thu</text>
+      <text class="name" x="128" y="322" font-size="11" text-anchor="end">Fri</text>
+      <text class="name" x="128" y="372" font-size="11" text-anchor="end">Sat</text>
+      <text class="name" x="128" y="422" font-size="11" text-anchor="end">Sun</text>
+      <rect class="cell" x="148" y="96" width="60" height="44" rx="3" style="--o:0.60;opacity:var(--o)" data-tip-label="Mon · Jan" data-tip="*11,323 births* on an average Mon in Jan|57% above the quietest cell"/>
+      <rect class="cell" x="148" y="146" width="60" height="44" rx="3" style="--o:0.73;opacity:var(--o)" data-tip-label="Tue · Jan" data-tip="*12,384 births* on an average Tue in Jan|72% above the quietest cell"/>
+      <rect class="cell" x="148" y="196" width="60" height="44" rx="3" style="--o:0.72;opacity:var(--o)" data-tip-label="Wed · Jan" data-tip="*12,266 births* on an average Wed in Jan|70% above the quietest cell"/>
+      <rect class="cell" x="148" y="246" width="60" height="44" rx="3" style="--o:0.73;opacity:var(--o)" data-tip-label="Thu · Jan" data-tip="*12,399 births* on an average Thu in Jan|72% above the quietest cell"/>
+      <rect class="cell" x="148" y="296" width="60" height="44" rx="3" style="--o:0.72;opacity:var(--o)" data-tip-label="Fri · Jan" data-tip="*12,292 births* on an average Fri in Jan|71% above the quietest cell"/>
+      <rect class="cell" x="148" y="346" width="60" height="44" rx="3" style="--o:0.22;opacity:var(--o)" data-tip-label="Sat · Jan" data-tip="*8,333 births* on an average Sat in Jan|16% above the quietest cell"/>
+      <rect class="cell" x="148" y="396" width="60" height="44" rx="3" style="--o:0.09;opacity:var(--o)" data-tip-label="Sun · Jan" data-tip="*7,314 births* on an average Sun in Jan|2% above the quietest cell"/>
+      <rect class="cell" x="214" y="96" width="60" height="44" rx="3" style="--o:0.64;opacity:var(--o)" data-tip-label="Mon · Feb" data-tip="*11,675 births* on an average Mon in Feb|62% above the quietest cell"/>
+      <rect class="cell" x="214" y="146" width="60" height="44" rx="3" style="--o:0.79;opacity:var(--o)" data-tip-label="Tue · Feb" data-tip="*12,820 births* on an average Tue in Feb|78% above the quietest cell"/>
+      <rect class="cell" x="214" y="196" width="60" height="44" rx="3" style="--o:0.75;opacity:var(--o)" data-tip-label="Wed · Feb" data-tip="*12,569 births* on an average Wed in Feb|74% above the quietest cell"/>
+      <rect class="cell" x="214" y="246" width="60" height="44" rx="3" style="--o:0.76;opacity:var(--o)" data-tip-label="Thu · Feb" data-tip="*12,647 births* on an average Thu in Feb|76% above the quietest cell"/>
+      <rect class="cell" x="214" y="296" width="60" height="44" rx="3" style="--o:0.74;opacity:var(--o)" data-tip-label="Fri · Feb" data-tip="*12,472 births* on an average Fri in Feb|73% above the quietest cell"/>
+      <rect class="cell" x="214" y="346" width="60" height="44" rx="3" style="--o:0.24;opacity:var(--o)" data-tip-label="Sat · Feb" data-tip="*8,448 births* on an average Sat in Feb|17% above the quietest cell"/>
+      <rect class="cell" x="214" y="396" width="60" height="44" rx="3" style="--o:0.10;opacity:var(--o)" data-tip-label="Sun · Feb" data-tip="*7,377 births* on an average Sun in Feb|2% above the quietest cell"/>
+      <rect class="cell" x="280" y="96" width="60" height="44" rx="3" style="--o:0.66;opacity:var(--o)" data-tip-label="Mon · Mar" data-tip="*11,848 births* on an average Mon in Mar|64% above the quietest cell"/>
+      <rect class="cell" x="280" y="146" width="60" height="44" rx="3" style="--o:0.79;opacity:var(--o)" data-tip-label="Tue · Mar" data-tip="*12,834 births* on an average Tue in Mar|78% above the quietest cell"/>
+      <rect class="cell" x="280" y="196" width="60" height="44" rx="3" style="--o:0.76;opacity:var(--o)" data-tip-label="Wed · Mar" data-tip="*12,595 births* on an average Wed in Mar|75% above the quietest cell"/>
+      <rect class="cell" x="280" y="246" width="60" height="44" rx="3" style="--o:0.76;opacity:var(--o)" data-tip-label="Thu · Mar" data-tip="*12,604 births* on an average Thu in Mar|75% above the quietest cell"/>
+      <rect class="cell" x="280" y="296" width="60" height="44" rx="3" style="--o:0.73;opacity:var(--o)" data-tip-label="Fri · Mar" data-tip="*12,380 births* on an average Fri in Mar|72% above the quietest cell"/>
+      <rect class="cell" x="280" y="346" width="60" height="44" rx="3" style="--o:0.23;opacity:var(--o)" data-tip-label="Sat · Mar" data-tip="*8,387 births* on an average Sat in Mar|16% above the quietest cell"/>
+      <rect class="cell" x="280" y="396" width="60" height="44" rx="3" style="--o:0.09;opacity:var(--o)" data-tip-label="Sun · Mar" data-tip="*7,293 births* on an average Sun in Mar|1% above the quietest cell"/>
+      <rect class="cell" x="346" y="96" width="60" height="44" rx="3" style="--o:0.65;opacity:var(--o)" data-tip-label="Mon · Apr" data-tip="*11,754 births* on an average Mon in Apr|63% above the quietest cell"/>
+      <rect class="cell" x="346" y="146" width="60" height="44" rx="3" style="--o:0.79;opacity:var(--o)" data-tip-label="Tue · Apr" data-tip="*12,815 births* on an average Tue in Apr|78% above the quietest cell"/>
+      <rect class="cell" x="346" y="196" width="60" height="44" rx="3" style="--o:0.75;opacity:var(--o)" data-tip-label="Wed · Apr" data-tip="*12,567 births* on an average Wed in Apr|74% above the quietest cell"/>
+      <rect class="cell" x="346" y="246" width="60" height="44" rx="3" style="--o:0.75;opacity:var(--o)" data-tip-label="Thu · Apr" data-tip="*12,556 births* on an average Thu in Apr|74% above the quietest cell"/>
+      <rect class="cell" x="346" y="296" width="60" height="44" rx="3" style="--o:0.70;opacity:var(--o)" data-tip-label="Fri · Apr" data-tip="*12,121 births* on an average Fri in Apr|68% above the quietest cell"/>
+      <rect class="cell" x="346" y="346" width="60" height="44" rx="3" style="--o:0.20;opacity:var(--o)" data-tip-label="Sat · Apr" data-tip="*8,194 births* on an average Sat in Apr|14% above the quietest cell"/>
+      <rect class="cell" x="346" y="396" width="60" height="44" rx="3" style="--o:0.08;opacity:var(--o)" data-tip-label="Sun · Apr" data-tip="*7,206 births* - the quietest cell"/>
+      <rect class="cell" x="412" y="96" width="60" height="44" rx="3" style="--o:0.56;opacity:var(--o)" data-tip-label="Mon · May" data-tip="*11,045 births* on an average Mon in May|53% above the quietest cell"/>
+      <rect class="cell" x="412" y="146" width="60" height="44" rx="3" style="--o:0.80;opacity:var(--o)" data-tip-label="Tue · May" data-tip="*12,958 births* on an average Tue in May|80% above the quietest cell"/>
+      <rect class="cell" x="412" y="196" width="60" height="44" rx="3" style="--o:0.80;opacity:var(--o)" data-tip-label="Wed · May" data-tip="*12,921 births* on an average Wed in May|79% above the quietest cell"/>
+      <rect class="cell" x="412" y="246" width="60" height="44" rx="3" style="--o:0.79;opacity:var(--o)" data-tip-label="Thu · May" data-tip="*12,887 births* on an average Thu in May|79% above the quietest cell"/>
+      <rect class="cell" x="412" y="296" width="60" height="44" rx="3" style="--o:0.75;opacity:var(--o)" data-tip-label="Fri · May" data-tip="*12,527 births* on an average Fri in May|74% above the quietest cell"/>
+      <rect class="cell" x="412" y="346" width="60" height="44" rx="3" style="--o:0.23;opacity:var(--o)" data-tip-label="Sat · May" data-tip="*8,371 births* on an average Sat in May|16% above the quietest cell"/>
+      <rect class="cell" x="412" y="396" width="60" height="44" rx="3" style="--o:0.10;opacity:var(--o)" data-tip-label="Sun · May" data-tip="*7,339 births* on an average Sun in May|2% above the quietest cell"/>
+      <rect class="cell" x="478" y="96" width="60" height="44" rx="3" style="--o:0.71;opacity:var(--o)" data-tip-label="Mon · Jun" data-tip="*12,191 births* on an average Mon in Jun|69% above the quietest cell"/>
+      <rect class="cell" x="478" y="146" width="60" height="44" rx="3" style="--o:0.83;opacity:var(--o)" data-tip-label="Tue · Jun" data-tip="*13,158 births* on an average Tue in Jun|83% above the quietest cell"/>
+      <rect class="cell" x="478" y="196" width="60" height="44" rx="3" style="--o:0.82;opacity:var(--o)" data-tip-label="Wed · Jun" data-tip="*13,053 births* on an average Wed in Jun|81% above the quietest cell"/>
+      <rect class="cell" x="478" y="246" width="60" height="44" rx="3" style="--o:0.82;opacity:var(--o)" data-tip-label="Thu · Jun" data-tip="*13,113 births* on an average Thu in Jun|82% above the quietest cell"/>
+      <rect class="cell" x="478" y="296" width="60" height="44" rx="3" style="--o:0.78;opacity:var(--o)" data-tip-label="Fri · Jun" data-tip="*12,763 births* on an average Fri in Jun|77% above the quietest cell"/>
+      <rect class="cell" x="478" y="346" width="60" height="44" rx="3" style="--o:0.25;opacity:var(--o)" data-tip-label="Sat · Jun" data-tip="*8,593 births* on an average Sat in Jun|19% above the quietest cell"/>
+      <rect class="cell" x="478" y="396" width="60" height="44" rx="3" style="--o:0.12;opacity:var(--o)" data-tip-label="Sun · Jun" data-tip="*7,560 births* on an average Sun in Jun|5% above the quietest cell"/>
+      <rect class="cell" x="544" y="96" width="60" height="44" rx="3" style="--o:0.72;opacity:var(--o)" data-tip-label="Mon · Jul" data-tip="*12,285 births* on an average Mon in Jul|70% above the quietest cell"/>
+      <rect class="cell" x="544" y="146" width="60" height="44" rx="3" style="--o:0.88;opacity:var(--o)" data-tip-label="Tue · Jul" data-tip="*13,563 births* on an average Tue in Jul|88% above the quietest cell"/>
+      <rect class="cell" x="544" y="196" width="60" height="44" rx="3" style="--o:0.84;opacity:var(--o)" data-tip-label="Wed · Jul" data-tip="*13,270 births* on an average Wed in Jul|84% above the quietest cell"/>
+      <rect class="cell" x="544" y="246" width="60" height="44" rx="3" style="--o:0.85;opacity:var(--o)" data-tip-label="Thu · Jul" data-tip="*13,359 births* on an average Thu in Jul|85% above the quietest cell"/>
+      <rect class="cell" x="544" y="296" width="60" height="44" rx="3" style="--o:0.79;opacity:var(--o)" data-tip-label="Fri · Jul" data-tip="*12,887 births* on an average Fri in Jul|79% above the quietest cell"/>
+      <rect class="cell" x="544" y="346" width="60" height="44" rx="3" style="--o:0.29;opacity:var(--o)" data-tip-label="Sat · Jul" data-tip="*8,889 births* on an average Sat in Jul|23% above the quietest cell"/>
+      <rect class="cell" x="544" y="396" width="60" height="44" rx="3" style="--o:0.16;opacity:var(--o)" data-tip-label="Sun · Jul" data-tip="*7,810 births* on an average Sun in Jul|8% above the quietest cell"/>
+      <rect class="cell" x="610" y="96" width="60" height="44" rx="3" style="--o:0.75;opacity:var(--o)" data-tip-label="Mon · Aug" data-tip="*12,552 births* on an average Mon in Aug|74% above the quietest cell"/>
+      <rect class="cell" x="610" y="146" width="60" height="44" rx="3" style="--o:0.90;opacity:var(--o)" data-tip-label="Tue · Aug" data-tip="*13,735 births* on an average Tue in Aug|91% above the quietest cell"/>
+      <rect class="cell" x="610" y="196" width="60" height="44" rx="3" style="--o:0.87;opacity:var(--o)" data-tip-label="Wed · Aug" data-tip="*13,469 births* on an average Wed in Aug|87% above the quietest cell"/>
+      <rect class="cell" x="610" y="246" width="60" height="44" rx="3" style="--o:0.87;opacity:var(--o)" data-tip-label="Thu · Aug" data-tip="*13,506 births* on an average Thu in Aug|87% above the quietest cell"/>
+      <rect class="cell" x="610" y="296" width="60" height="44" rx="3" style="--o:0.84;opacity:var(--o)" data-tip-label="Fri · Aug" data-tip="*13,248 births* on an average Fri in Aug|84% above the quietest cell"/>
+      <rect class="cell" x="610" y="346" width="60" height="44" rx="3" style="--o:0.30;opacity:var(--o)" data-tip-label="Sat · Aug" data-tip="*8,977 births* on an average Sat in Aug|25% above the quietest cell"/>
+      <rect class="cell" x="610" y="396" width="60" height="44" rx="3" style="--o:0.16;opacity:var(--o)" data-tip-label="Sun · Aug" data-tip="*7,836 births* on an average Sun in Aug|9% above the quietest cell"/>
+      <rect class="cell" x="676" y="96" width="60" height="44" rx="3" style="--o:0.66;opacity:var(--o)" data-tip-label="Mon · Sep" data-tip="*11,808 births* on an average Mon in Sep|64% above the quietest cell"/>
+      <rect class="cell" x="676" y="146" width="60" height="44" rx="3" style="--o:0.90;opacity:var(--o)" data-tip-label="Tue · Sep" data-tip="*13,726 births* on an average Tue in Sep|90% above the quietest cell"/>
+      <rect class="cell-focal" x="676" y="196" width="60" height="44" rx="3" data-tip-label="Wed · Sep" data-tip="*13,880 births* on an average Wed in Sep|93% above the quietest cell"/>
+      <rect class="cell" x="676" y="246" width="60" height="44" rx="3" style="--o:0.91;opacity:var(--o)" data-tip-label="Thu · Sep" data-tip="*13,839 births* on an average Thu in Sep|92% above the quietest cell"/>
+      <rect class="cell" x="676" y="296" width="60" height="44" rx="3" style="--o:0.89;opacity:var(--o)" data-tip-label="Fri · Sep" data-tip="*13,608 births* on an average Fri in Sep|89% above the quietest cell"/>
+      <rect class="cell" x="676" y="346" width="60" height="44" rx="3" style="--o:0.33;opacity:var(--o)" data-tip-label="Sat · Sep" data-tip="*9,216 births* on an average Sat in Sep|28% above the quietest cell"/>
+      <rect class="cell" x="676" y="396" width="60" height="44" rx="3" style="--o:0.19;opacity:var(--o)" data-tip-label="Sun · Sep" data-tip="*8,053 births* on an average Sun in Sep|12% above the quietest cell"/>
+      <rect class="cell" x="742" y="96" width="60" height="44" rx="3" style="--o:0.69;opacity:var(--o)" data-tip-label="Mon · Oct" data-tip="*12,063 births* on an average Mon in Oct|67% above the quietest cell"/>
+      <rect class="cell" x="742" y="146" width="60" height="44" rx="3" style="--o:0.83;opacity:var(--o)" data-tip-label="Tue · Oct" data-tip="*13,169 births* on an average Tue in Oct|83% above the quietest cell"/>
+      <rect class="cell" x="742" y="196" width="60" height="44" rx="3" style="--o:0.79;opacity:var(--o)" data-tip-label="Wed · Oct" data-tip="*12,886 births* on an average Wed in Oct|79% above the quietest cell"/>
+      <rect class="cell" x="742" y="246" width="60" height="44" rx="3" style="--o:0.80;opacity:var(--o)" data-tip-label="Thu · Oct" data-tip="*12,927 births* on an average Thu in Oct|79% above the quietest cell"/>
+      <rect class="cell" x="742" y="296" width="60" height="44" rx="3" style="--o:0.76;opacity:var(--o)" data-tip-label="Fri · Oct" data-tip="*12,583 births* on an average Fri in Oct|75% above the quietest cell"/>
+      <rect class="cell" x="742" y="346" width="60" height="44" rx="3" style="--o:0.24;opacity:var(--o)" data-tip-label="Sat · Oct" data-tip="*8,515 births* on an average Sat in Oct|18% above the quietest cell"/>
+      <rect class="cell" x="742" y="396" width="60" height="44" rx="3" style="--o:0.12;opacity:var(--o)" data-tip-label="Sun · Oct" data-tip="*7,559 births* on an average Sun in Oct|5% above the quietest cell"/>
+      <rect class="cell" x="808" y="96" width="60" height="44" rx="3" style="--o:0.73;opacity:var(--o)" data-tip-label="Mon · Nov" data-tip="*12,405 births* on an average Mon in Nov|72% above the quietest cell"/>
+      <rect class="cell" x="808" y="146" width="60" height="44" rx="3" style="--o:0.86;opacity:var(--o)" data-tip-label="Tue · Nov" data-tip="*13,390 births* on an average Tue in Nov|86% above the quietest cell"/>
+      <rect class="cell" x="808" y="196" width="60" height="44" rx="3" style="--o:0.77;opacity:var(--o)" data-tip-label="Wed · Nov" data-tip="*12,714 births* on an average Wed in Nov|76% above the quietest cell"/>
+      <rect class="cell" x="808" y="246" width="60" height="44" rx="3" style="--o:0.64;opacity:var(--o)" data-tip-label="Thu · Nov" data-tip="*11,648 births* on an average Thu in Nov|62% above the quietest cell"/>
+      <rect class="cell" x="808" y="296" width="60" height="44" rx="3" style="--o:0.68;opacity:var(--o)" data-tip-label="Fri · Nov" data-tip="*11,942 births* on an average Fri in Nov|66% above the quietest cell"/>
+      <rect class="cell" x="808" y="346" width="60" height="44" rx="3" style="--o:0.23;opacity:var(--o)" data-tip-label="Sat · Nov" data-tip="*8,380 births* on an average Sat in Nov|16% above the quietest cell"/>
+      <rect class="cell" x="808" y="396" width="60" height="44" rx="3" style="--o:0.11;opacity:var(--o)" data-tip-label="Sun · Nov" data-tip="*7,477 births* on an average Sun in Nov|4% above the quietest cell"/>
+      <rect class="cell" x="874" y="96" width="60" height="44" rx="3" style="--o:0.66;opacity:var(--o)" data-tip-label="Mon · Dec" data-tip="*11,846 births* on an average Mon in Dec|64% above the quietest cell"/>
+      <rect class="cell" x="874" y="146" width="60" height="44" rx="3" style="--o:0.80;opacity:var(--o)" data-tip-label="Tue · Dec" data-tip="*12,913 births* on an average Tue in Dec|79% above the quietest cell"/>
+      <rect class="cell" x="874" y="196" width="60" height="44" rx="3" style="--o:0.78;opacity:var(--o)" data-tip-label="Wed · Dec" data-tip="*12,747 births* on an average Wed in Dec|77% above the quietest cell"/>
+      <rect class="cell" x="874" y="246" width="60" height="44" rx="3" style="--o:0.77;opacity:var(--o)" data-tip-label="Thu · Dec" data-tip="*12,651 births* on an average Thu in Dec|76% above the quietest cell"/>
+      <rect class="cell" x="874" y="296" width="60" height="44" rx="3" style="--o:0.72;opacity:var(--o)" data-tip-label="Fri · Dec" data-tip="*12,315 births* on an average Fri in Dec|71% above the quietest cell"/>
+      <rect class="cell" x="874" y="346" width="60" height="44" rx="3" style="--o:0.24;opacity:var(--o)" data-tip-label="Sat · Dec" data-tip="*8,440 births* on an average Sat in Dec|17% above the quietest cell"/>
+      <rect class="cell" x="874" y="396" width="60" height="44" rx="3" style="--o:0.10;opacity:var(--o)" data-tip-label="Sun · Dec" data-tip="*7,384 births* on an average Sun in Dec|2% above the quietest cell"/>
+      <text class="sub" x="148" y="470" font-size="8" letter-spacing="0.06em">AVERAGE US BIRTHS PER DAY, BY MONTH AND WEEKDAY, 2000-2014 · FIVETHIRTYEIGHT / US SSA · THE PALE WEEKEND COLUMNS ARE SCHEDULED DELIVERIES TAKING WEEKDAYS OFF</text>
+    </svg>
+  </div>
+</body>
+</html>
