@@ -2,40 +2,23 @@ Love this repo @cathrynlavery ! I've been using some charts and dataviz in my ow
 
 The current 27 types cover diagrams really well. On the chart side there's bar, line, and radar — these would add proportion (treemap), flow (sankey), rank change (slopegraph), paired values (dumbbell), part-of-whole counts (waffle), and more.
 
-I've drafted 16 candidates in the house type-reference format, each with a working example in the default skin using public data (OWID, HadCRUT5, Olympic medals, US Census). All of them are below — **pick whichever you'd like included**, in any grouping. Roughly three waves as a starting point:
-
-1. **treemap, sankey, slopegraph, dumbbell, waffle**
-2. hex tile map, bump chart, streamgraph, beeswarm, arc diagram
-3. bubble, ridgeline, small multiples, marimekko, warming stripes, punch card
+I've drafted 16 candidates in the house type-reference format, each with a working example in the default skin using public data (OWID, HadCRUT5, Olympic medals, US Census). They're all below — **pick whichever you'd like included**.
 
 They all follow the house rules — one accent, ink-opacity ramps, mono for numbers, sourced footnotes — and each has an honest-data rule (treemap area is the only encoding, never clipped or log-scaled, etc).
 
-If you're interested I'd start with a PR of whichever you choose, done per the contributing checklist: type reference, SKILL.md row, three static example variants, gallery entries, all gates green. My drafts have hover tooltips and a theme toggle for easy review but I'd ship fully static per ADR 0001.
+If you're interested I'd PR whichever you choose, done per the contributing checklist: type reference, SKILL.md row, three static example variants, gallery entries, all gates green. My drafts have hover tooltips and a theme toggle for easy review but I'd ship fully static per ADR 0001.
 
 Full drafts (type specs + honest-data rules): [dataviz-types.md](https://github.com/0xDarkMatter/diagram-design/blob/dataviz-preview/docs/proposals/dataviz-types.md) — each image below links to the live HTML.
-
-## Wave 1
 
 | | |
 |---|---|
 | **Treemap** — hierarchical proportion<br>[![Treemap](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/world-population-treemap.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/world-population-treemap.html) | **Sankey** — flow between two axes<br>[![Sankey](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/migration-sankey.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/migration-sankey.html) |
 | **Slopegraph** — rank change between two moments<br>[![Slopegraph](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/life-expectancy-slope.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/life-expectancy-slope.html) | **Dumbbell** — paired values per category<br>[![Dumbbell](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/gender-gap-dumbbell.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/gender-gap-dumbbell.html) |
-| **Waffle** — discrete part-of-whole<br>[![Waffle](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/energy-waffle.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/energy-waffle.html) | |
-
-## Wave 2
-
-| | |
-|---|---|
-| **Hex tile map** — equal-area geography<br>[![Hex tile map](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/us-hex-population.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/us-hex-population.html) | **Bump chart** — rank over time<br>[![Bump chart](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/olympic-bump.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/olympic-bump.html) |
-| **Streamgraph** — composition over time<br>[![Streamgraph](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/energy-stream.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/energy-stream.html) | **Beeswarm** — distribution of individuals<br>[![Beeswarm](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/gdp-beeswarm.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/gdp-beeswarm.html) |
-| **Arc diagram** — pairwise relations on a line<br>[![Arc diagram](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/europe-borders-arc.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/europe-borders-arc.html) | |
-
-## Wave 3
-
-| | |
-|---|---|
+| **Waffle** — discrete part-of-whole<br>[![Waffle](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/energy-waffle.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/energy-waffle.html) | **Hex tile map** — equal-area geography<br>[![Hex tile map](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/us-hex-population.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/us-hex-population.html) |
+| **Bump chart** — rank over time<br>[![Bump chart](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/olympic-bump.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/olympic-bump.html) | **Streamgraph** — composition over time<br>[![Streamgraph](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/energy-stream.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/energy-stream.html) |
+| **Beeswarm** — distribution of individuals<br>[![Beeswarm](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/gdp-beeswarm.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/gdp-beeswarm.html) | **Arc diagram** — pairwise relations on a line<br>[![Arc diagram](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/europe-borders-arc.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/europe-borders-arc.html) |
 | **Bubble** — three variables at once<br>[![Bubble](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/health-wealth-bubble.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/health-wealth-bubble.html) | **Ridgeline** — many distributions stacked<br>[![Ridgeline](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/city-temps-ridgeline.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/city-temps-ridgeline.html) |
 | **Small multiples** — same chart, many panels<br>[![Small multiples](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/co2-small-multiples.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/co2-small-multiples.html) | **Marimekko** — two-way proportion<br>[![Marimekko](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/electricity-marimekko.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/electricity-marimekko.html) |
 | **Warming stripes** — one variable, pure sequence<br>[![Warming stripes](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/warming-stripes.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/warming-stripes.html) | **Punch card** — two categorical axes, count cells<br>[![Punch card](https://raw.githubusercontent.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/shots/births-punchcard.png)](https://raw.githack.com/0xDarkMatter/diagram-design/dataviz-preview/docs/proposals/dataviz/births-punchcard.html) |
 
-Happy to re-cut the waves, drop any that don't fit, or adjust the examples. Thanks!
+Happy to drop any that don't fit, or adjust the examples. Thanks!
