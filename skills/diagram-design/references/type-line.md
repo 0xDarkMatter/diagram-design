@@ -37,6 +37,19 @@
 - Y-axis that doesn't include zero when the absolute magnitude matters.
 - Connecting discontinuous data segments without a visual gap.
 
+## Variants
+
+All three inherit the plot area, gridline treatment, and legend block above, and all three are straight-segment constructions — the smoothed-spline anti-pattern holds. A kernel density estimate is already a continuous function, so sampling it densely and joining the samples with straight segments is honest; spline-smoothing raw sampled points is not.
+
+- **Bump chart:** rank over time — one line per series through a fixed grid of rank rows, which replace the value gridlines. Rows are a *designed* grid: first row at `y=64`, pitch divisible by 4 and chosen so the last row clears `y=420` (5 ranks → 80px, 4 → 96px). Period columns sit on an even pitch divisible by 4, inset ≥ 96px from both plot edges, leaving gutters for the entry and exit series labels. Up to 5 series, as above — one rank row per series, and `series-1`…`series-4` covers the non-focal set. 4–8 periods (the base type allows 12; rank columns need the width). Focal series `accent` at 1.8 with `r=4` vertex dots, others at 1.2.
+  - **Rank is ordinal.** Equal row spacing is not equal distance in the ranked quantity: 1st to 2nd may be a chasm and 4th to 5th a hair. Name the ranked measure in the legend, and never read a steeper segment as a faster rate.
+
+- **Streamgraph:** composition of an additive total over time, stacked around a centered (“wiggle”) baseline instead of `y=420`. Centre the stack on `y=230`. Drop the y-axis line and its labels — a floating baseline has no fixed zero to label, and an axis implying one is a lie; keep the period labels below `y=420`. Cap 4–7 bands. Focal band `accent-tint` with `accent` stroke; the rest on an ink opacity ramp stepped evenly from `0.04` to `0.13` with an `ink @ 0.30` stroke. `0.14` is the hard ceiling — dark mode binds, and past it a `muted` 9px label sitting on the band drops under 4.5:1. One accent, no rainbow.
+  - **Shows composition, not magnitude.** Only band *thickness* encodes a value; no band’s top or bottom edge is readable, so a reader cannot recover any series’ level. Never stack non-additive quantities — rates, averages, or percentages of different denominators. If individual series need comparing over time, that is a line chart.
+
+- **Ridgeline:** several distributions stacked vertically, one per row, each filled on its own baseline. Widen the left gutter for the category names — ridges start at `x=200`, not `x=80` — and left-align each label in it at that row’s baseline. Gridlines run *vertical* on the shared x-scale; the horizontal value gridlines above do not apply, because each row’s y is its own density, not a shared quantity. Ridge height is 1.6× the row pitch, giving 0.6 overlap; the pitch is divisible by 4 and must satisfy `pitch × (rows + 0.6) ≤ 380` so the tallest ridge still clears the plot top — 4 rows → 80px, 6 → 56px, 8 → 44px. Paint the back row first and give each ridge an opaque `paper` fill so the row in front reads cleanly over the one behind. Cap 4–8 ridges. Focal ridge `accent-tint` with `accent` stroke; the rest on the same ink ramp and the same `0.14` ceiling as the streamgraph.
+  - **One x-scale and one y-scale across every ridge**, always. Per-row normalisation turns a magnitude comparison into a shape comparison, and nothing in the rendered figure reveals it. State the overlap fraction on the source line, because overlap hides the foot of each ridge behind the row in front.
+
 ## Examples
 
 - `assets/example-line.html` — minimal light
