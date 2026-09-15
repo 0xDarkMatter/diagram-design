@@ -57,6 +57,7 @@ DESCRIPTION_ALIASES = {
     "line chart": "line",
     "scatter plot": "scatter",
 }
+DISCOVERY_HOOKS = ("lifecycle phase",)
 ROUTING_SURFACES = {
     Path("commands/export-diagram.md"): "references/export.md",
     Path("commands/import-drawio.md"): "references/import-drawio.md",
@@ -179,6 +180,11 @@ def check_description(errors: list[str]) -> None:
             errors.append(
                 f"description lost the lexical hook for type {name!r} "
                 f"(expected {key!r} in the SKILL.md frontmatter description)"
+            )
+    for hook in DISCOVERY_HOOKS:
+        if hook not in description:
+            errors.append(
+                f"SKILL.md frontmatter description lost discovery hook {hook!r}"
             )
 
 
@@ -1145,6 +1151,11 @@ def check_manifest_descriptions(errors: list[str], root: Path) -> None:
                         f"{relative.as_posix()} {key!r} lost the lexical hook for "
                         f"type {name!r} (expected {hook!r}) — it must name every "
                         f"type the SKILL.md description names"
+                    )
+            for hook in DISCOVERY_HOOKS:
+                if hook not in text:
+                    errors.append(
+                        f"{relative.as_posix()} {key!r} lost discovery hook {hook!r}"
                     )
 
 

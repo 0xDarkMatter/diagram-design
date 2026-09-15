@@ -151,6 +151,18 @@ def main() -> int:
         if len(errors) != 1 or "lost the lexical hook" not in errors[0]:
             raise AssertionError(f"missing routing hook was not rejected: {errors}")
 
+        document = json.loads(codex.read_text(encoding="utf-8"))
+        document["description"] = short.replace("lifecycle phase", "subject progress")
+        document["interface"]["longDescription"] = document["interface"]["longDescription"].replace(
+            "lifecycle phase", "subject progress"
+        )
+        codex.write_text(json.dumps(document), encoding="utf-8")
+        errors = []
+        verify.check_manifest_descriptions(errors, root)
+        lifecycle_errors = [error for error in errors if "discovery hook 'lifecycle phase'" in error]
+        if len(lifecycle_errors) != 2:
+            raise AssertionError(f"missing lifecycle discovery hooks were not rejected: {errors}")
+
     for length in (1024, 1025):
         errors: list[str] = []
         markdown = f"---\nname: fixture\ndescription: {'x' * length}\n---\n"
@@ -1001,6 +1013,27 @@ diagram-design/
         if not any("ridgeline" in e and "line" in e for e in errs):
             raise AssertionError(f"variant with missing parent not caught: {errs}")
         print("OK gallery: variant with missing parent caught")
+
+        lifecycle_trio = [
+            "example-state-lifecycle.html",
+            "example-state-lifecycle-dark.html",
+            "example-state-lifecycle-full.html",
+        ]
+
+        # 10. Lifecycle is a complete State variant and reuses eyebrow 04.
+        html = make_gallery_html(
+            make_tab("state", "04"),
+            make_tab("state-lifecycle", "04", parent="state"),
+        )
+        errs = run_gallery_check(html, [
+            "example-state.html",
+            "example-state-dark.html",
+            "example-state-full.html",
+            *lifecycle_trio,
+        ])
+        if errs:
+            raise AssertionError(f"valid lifecycle State variant failed: {errs}")
+        print("OK gallery: lifecycle phase map is a complete State variant")
 
     with tempfile.TemporaryDirectory(prefix="verify-docs-sync-assets-") as asset_tmp:
         tmp_skill_dir = Path(asset_tmp)
