@@ -638,11 +638,14 @@ def run_cases(h):
         r"exactly one",
     )
 
+    # The browser reads an unquoted value up to the next whitespace or `>`,
+    # so `d=M08Z/` is the path (slash included) and the tag is not
+    # self-closing. The checker reads exactly that and reports what it finds.
     h.expect_finding(
-        "a <path> declaring data-layer whose attributes cannot be parsed is reported",
+        "an unquoted layer is read as the browser reads it, and its bad path is reported",
         document(figure()
                  + "  <path data-layer=unquoted data-values=1,2 d=M08Z/>\n"),
-        r"declares data-layer but its attributes could not be parsed",
+        r"'unquoted''s path contains characters outside absolute M/C/L/Z",
     )
 
     h.expect_finding(
@@ -700,6 +703,160 @@ def run_cases(h):
         "a duplicated attribute whose first value is honest still passes",
         document(figure()).replace(
             ' fill="#2d3142"/>', ' d="M 0 0 Z" fill="#2d3142"/>', 1),
+    )
+
+    # 9. Markup is read as the browser reads it. A regex tag matcher stops at
+    # the first `>` it sees, so a quoted `>` before an attribute hid that
+    # attribute from the checker while Chromium honoured it. Every case here
+    # is a shape the browser parses one way; the checker must parse it the
+    # same way, in both polarities.
+    h.expect_finding(
+        "an ancestor <g> hiding its transform behind a quoted > is still reported",
+        document('  <g data-note=">" transform="translate(0 -80)">\n' + figure()
+                 + "  </g>\n"),
+        r"layer 'Docs' carries an ancestor <g>/<svg> transform",
+    )
+
+    h.expect_finding(
+        "an ancestor <g> hiding an inline style transform behind a quoted > is reported",
+        document('  <g data-note=">" style="translate: 0 80px">\n' + figure()
+                 + "  </g>\n"),
+        r"layer 'Docs' carries an ancestor <g>/<svg> style transform",
+    )
+
+    h.expect_clean(
+        "an honest layer with a quoted > before its bindings is parsed and passes",
+        document(figure()).replace(
+            '  <path data-layer="Docs"', '  <path data-note=">" data-layer="Docs"', 1),
+    )
+
+    h.expect_finding(
+        "a dishonest layer with a quoted > before its bindings is still reported",
+        document(figure()).replace(
+            '  <path data-layer="Docs" data-values="8,9,7,6,0,0"',
+            '  <path data-note=">" data-layer="Docs" data-values="8,9,12,6,0,0"', 1),
+        r"'Docs' draws .* period 2 where its declared value 12",
+    )
+
+    h.expect_only_one(
+        "a legend entry with a quoted > before its bindings is still bound and checked",
+        document(figure()).replace(
+            '  <text data-layer="Docs" data-total="30" x="40" y="496">Docs · 30 min<',
+            '  <text data-note=">" data-layer="Docs" data-total="30" x="40" y="496">'
+            "Docs · 28 min<", 1),
+        r"legend entry for 'Docs' prints .* but declares 30",
+    )
+
+    h.expect_finding(
+        "a caption hiding a transform behind a quoted > is reported",
+        document(figure()).replace(
+            '  <text data-period="W01"',
+            '  <text data-note=">" transform="translate(0 40)" data-period="W01"', 1),
+        r"bound label \(W01\) carries transform",
+    )
+
+    # Three carriers reach the renderer; the `transform` attribute is only the
+    # most visible. Each is refused on the element and on an ancestor.
+    h.expect_finding(
+        "an inline style transform on a layer path is reported",
+        document(figure()).replace(
+            '  <path data-layer="Docs"',
+            '  <path style="transform: translateY(80px)" data-layer="Docs"', 1),
+        r"layer 'Docs' carries style=.*\(the transform property\)",
+    )
+
+    h.expect_finding(
+        "an inline translate property on a bound label is reported",
+        document(figure()).replace(
+            '  <text data-period="W01"',
+            '  <text style="translate: 0 40px" data-period="W01"', 1),
+        r"bound label \(W01\) carries style=.*\(the translate property\)",
+    )
+
+    h.expect_finding(
+        "an inline CSS d property on a layer replaces the verified path and is reported",
+        document(figure()).replace(
+            '  <path data-layer="Docs"',
+            '  <path style="d: path(\'M 0 0 L 4 4 Z\')" data-layer="Docs"', 1),
+        r"layer 'Docs' carries style=.*\(the d property\)",
+    )
+
+    h.expect_finding(
+        "a vendor-prefixed transform on an ancestor group's inline style is reported",
+        document('  <g style="-webkit-transform: translateY(80px)">\n' + figure()
+                 + "  </g>\n"),
+        r"carries an ancestor <g>/<svg> style transform",
+    )
+
+    h.expect_clean(
+        "an inline text-transform on a bound label is not read as a transform",
+        document(figure()).replace(
+            '  <text data-period="W01"',
+            '  <text style="text-transform: uppercase; display: block" data-period="W01"', 1),
+    )
+
+    h.expect_finding(
+        "a CSS translate declaration in a style block is reported",
+        HEAD + "<style>path { translate: 0 80px; }</style>\n" + figure() + TAIL,
+        r"a CSS `translate` declaration",
+    )
+
+    h.expect_finding(
+        "a vendor-prefixed CSS transform declaration in a style block is reported",
+        HEAD + "<style>.layer {\n  -webkit-transform: translateY(80px);\n}</style>\n"
+        + figure() + TAIL,
+        r"a CSS `transform` declaration",
+    )
+
+    # First-wins on an ancestor, both polarities: the browser applies the
+    # first `style`, so the checker must report exactly when that one moves.
+    h.expect_clean(
+        "a duplicated style on an ancestor keeps the browser's first, honest value",
+        document('  <g style="opacity: 1" style="transform: translateY(80px)">\n'
+                 + figure() + "  </g>\n"),
+    )
+
+    h.expect_finding(
+        "a duplicated style on an ancestor keeps the browser's first, dishonest value",
+        document('  <g style="transform: translateY(80px)" style="opacity: 1">\n'
+                 + figure() + "  </g>\n"),
+        r"carries an ancestor <g>/<svg> style transform",
+    )
+
+    h.expect_clean(
+        "a self-closing <g/> with a transform encloses nothing and is not reported",
+        document('  <g transform="translate(0 80)"/>\n' + figure()),
+    )
+
+    h.expect_clean(
+        "a commented-out ancestor transform is not read as live markup",
+        document('  <!-- <g transform="translate(0 80)"> -->\n' + figure()),
+    )
+
+    h.expect_clean(
+        "an end tag inside a quoted attribute does not end the legend entry's text",
+        document(figure()).replace(
+            'y="496">Docs · 30 min<',
+            'y="496"><tspan data-note="</text>">Docs</tspan> · 30 min<', 1),
+    )
+
+    h.expect_finding(
+        "upper-case tag and attribute names are read case-insensitively, as the browser does",
+        document(figure()).replace(
+            '  <path data-layer="Docs" data-values="8,9,7,6,0,0"',
+            '  <PATH DATA-LAYER="Docs" DATA-VALUES="8,9,12,6,0,0"', 1),
+        r"'Docs' draws .* period 2 where its declared value 12",
+    )
+
+    h.expect_clean(
+        "an entity in a layer name is unescaped consistently in path, legend and text",
+        document(figure()).replace("Docs", "R&amp;D"),
+    )
+
+    h.expect_finding(
+        "a broken attribute quote never crashes the checker and never passes",
+        document(figure()).replace('data-values="8,9,7,6,0,0"', 'data-values="8,9,7,6,0,0', 1),
+        r".",
     )
 
     # ── The fixture-isolation fix, held in place ──────────────────────────

@@ -49,9 +49,22 @@ Seven invariants, in the spirit of ADR 0005 and the slopegraph checker:
    parseable is a finding, never a pass. A checker that reports OK because it
    found nothing to compare is the bug, not the gate.
 
-Attributes are read the way a browser reads them: on a repeated attribute the
-first occurrence wins and the rest are not in the document at all. See
-`attrs_of` - a last-wins reader validates bytes the browser discarded.
+Markup is read through the stdlib html.parser.HTMLParser, never a regex, so a
+tag is recognized exactly when a browser would recognize it: a quoted `>`
+inside an attribute value does not end the tag, a repeated attribute keeps its
+FIRST value and the rest are not in the document at all, unquoted values and
+upper-case names parse as their canonical form, and a comment's contents are
+never live markup. The regex tag matcher this replaced stopped at the first
+`>` it saw, so `<g data-note=">" transform="translate(0 -80)">` hid its
+transform from the checker while Chromium applied it to every layer inside -
+the same fail-open shape verify-block-registry.py retired for the same reason.
+
+No transform may move verified geometry or a bound label, and a transform
+reaches the renderer by three carriers: the `transform` attribute, an inline
+`style="..."`, and a rule in a <style> block. All three are refused, on the
+element and on any ancestor <g>/<svg>, following verify-beeswarm.py; the
+property set in CSS_MOVES_MARK_RE is the invariant, adapted to what moves a
+path (`d`) and a label (`x`/`y`) rather than a circle.
 
 The basis for geometry is the `data-values` list each layer's path declares,
 never the rendered text. A layer whose legend entry is missing stays in the
@@ -66,6 +79,9 @@ WHAT THIS DOES NOT CHECK, deliberately:
   guidance in type-line.md, not geometry; a 30-period stream that tiles
   honestly is honest.
 - **Colour.** The accent-plus-ramp rule is `lint-skin.py`'s beat.
+- **Scenery.** A <path> that declares no data-layer is decoration by contract
+  and is not compared against anything; the guarantee here is that every tag
+  that DOES declare a binding is read exactly as the browser reads it.
 
 Usage:
     python3 scripts/verify-streamgraph.py --all
@@ -77,39 +93,52 @@ Exit: 0 clean, 1 findings, 2 usage.
 from __future__ import annotations
 
 import argparse
-import html
 import math
 import re
 import sys
+from html.parser import HTMLParser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ASSET_DIR = ROOT / "skills/diagram-design/assets"
 
-PATH_RE = re.compile(r"<path\b(?P<attrs>[^>]*?)/?>", re.IGNORECASE)
-TEXT_RE = re.compile(r"<text\b(?P<attrs>[^>]*)>(?P<body>.*?)</text>", re.IGNORECASE | re.DOTALL)
-COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
-NAMED_RE = re.compile(r"<(?P<tag>title|desc)\b[^>]*>(?P<body>.*?)</(?P=tag)>",
-                      re.IGNORECASE | re.DOTALL)
-GROUP_OPEN_RE = re.compile(r"<(?:g|svg)\b(?P<attrs>[^>]*?)(?P<selfclose>/?)>", re.IGNORECASE)
-GROUP_CLOSE_RE = re.compile(r"</(?:g|svg)\s*>", re.IGNORECASE)
-STYLE_RE = re.compile(r"<style\b[^>]*>(?P<body>.*?)</style>", re.IGNORECASE | re.DOTALL)
-# `transform:` but not `text-transform:` - the editorial template uses the latter.
-CSS_TRANSFORM_RE = re.compile(r"(?<![\w-])transform\s*:", re.IGNORECASE)
-TAG_RE = re.compile(r"<[^>]+>")
+# Every CSS property that can move or reshape a verified mark WITHOUT touching
+# the attributes this checker reads. The enumeration IS the invariant - it is
+# copied from verify-beeswarm.py, where it had already been wrong twice
+# (`transform:` alone missed `style="transform: ..."`, and once that was fixed
+# `style="translate: 80px 0"` walked past it because CSS Transforms Level 2
+# splits the transform into four properties). Three families reach a mark:
+#
+#   transform / translate / rotate / scale   the four transform properties;
+#       the individual three compose WITH `transform`, so each is its own door
+#   d / x / y                                SVG geometry properties. CSS wins
+#       over the presentation attribute, so `style="d: path(...)"` on a layer
+#       replaces the very path that was verified, and x/y do the same to a
+#       bound label - a more direct lie than any transform
+#   offset and its path/distance/position/anchor/rotate longhands
+#       CSS motion path, which places the element somewhere else entirely
+#
+# Anchored to a declaration start, so `text-transform:` (the editorial skin
+# uses it), `display:` and `--custom:` never match, and the `rotate` inside
+# `transform: rotate(45deg)` is read once as the property and never as the
+# function in its value. A vendor prefix is optional so `-webkit-transform:`
+# is not a free pass.
+CSS_MOVES_MARK_RE = re.compile(
+    r"(?:^|[{;}\n])\s*(?:-(?:webkit|moz|ms|o)-)?"
+    r"(?P<prop>transform|translate|rotate|scale"
+    r"|d|x|y"
+    r"|offset(?:-(?:path|distance|position|anchor|rotate))?)"
+    r"\s*:",
+    re.IGNORECASE,
+)
 # The complete numeric token a legend may print. Matching only the first
 # fragment is how "512,000" once agreed with metadata that said 512.
 NUMBER_RE = re.compile(
     r"[-+]?(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?"
 )
 DIGIT_RE = re.compile(r"\d")
-
-# Both quote styles, exactly as in verify-slopegraph.py: a single-quoted layer
-# that the parser cannot read must be reported, never silently dropped.
-ATTR_RE = re.compile(
-    r"""(?P<name>[\w:-]+)\s*=\s*(?P<quote>["'])(?P<value>.*?)(?P=quote)""",
-    re.DOTALL,
-)
+# Detection only - deliberately a text search over the raw bytes, so a file
+# that so much as mentions a layer binding is held to the contract.
 DECLARES_LAYER_RE = re.compile(r"\bdata-layer\s*=", re.IGNORECASE)
 # Path grammar: absolute M/C/L/Z and numbers only. Relative commands, arcs,
 # shorthand curves and H/V would need a transform stack this checker refuses
@@ -127,30 +156,41 @@ CONTROL_TOLERANCE = 0.75   # px, control point vs Catmull-Rom at 1/6 chord
 VALUE_TOLERANCE = 0.001    # printed/declared totals vs the sum of values
 CAPTION_TOLERANCE = 0.5    # px, period caption x vs its column
 
+GROUP_TAGS = ("g", "svg")                     # the only ancestors whose transform is inherited
+BODY_TAGS = ("text", "title", "desc", "style")  # elements whose character data is read
+
+
+# === PARSING =================================================================
+
+
+class Element:
+    """One start tag this checker cares about, as the browser tokenized it."""
+
+    __slots__ = ("tag", "attrs", "offset", "line", "body", "ancestor")
+
+    def __init__(self, tag, attrs, offset, line, ancestor):
+        self.tag = tag
+        self.attrs = attrs          # first-wins dict, names lower-cased, values unescaped
+        self.offset = offset        # byte offset of `<` in the source, for ordering
+        self.line = line
+        self.body = ""              # character data up to the matching end tag
+        self.ancestor = ancestor    # how the nearest transformed <g>/<svg> moves it, or None
+
 
 class Layer:
-    __slots__ = ("name", "values", "top", "bottom", "offset", "controls")
+    __slots__ = ("name", "values", "top", "bottom", "line", "controls")
 
-    def __init__(self, name, values, top, bottom, offset):
+    def __init__(self, name, values, top, bottom, line):
         self.name = name
         self.values = values          # per-period, left to right
         self.top = top                # on-curve points, left to right
         self.bottom = bottom          # on-curve points, left to right
-        self.offset = offset
+        self.line = line
         self.controls = []            # (boundary, segment, (c1, c2)) as drawn
 
 
-def line_of(source: str, offset: int) -> int:
-    return source.count("\n", 0, offset) + 1
-
-
-def blank_comments(source: str) -> str:
-    """Comments out, length and line numbers preserved."""
-    return COMMENT_RE.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), source)
-
-
-def attrs_of(raw: str) -> dict:
-    """Attributes as the browser reads them: on a repeat, the FIRST wins.
+def first_wins(attrs) -> dict:
+    """Attributes as the browser keeps them: on a repeat, the FIRST wins.
 
     HTML parsing drops a duplicate attribute rather than overwriting the one
     already on the token, so a second `d` on a path is not merely ignored -
@@ -159,17 +199,149 @@ def attrs_of(raw: str) -> dict:
     invalid first `d` and a valid second renders the invalid geometry while a
     last-wins reader checks, and passes, bytes the browser threw away.
     Confirmed in Chromium against the shipped example - the parsed DOM keeps
-    `d="M 0 0 Z"` and the real path is absent. The fix belongs here, at the
-    one place attributes are read, not at whichever call sites noticed it.
+    `d="M 0 0 Z"` and the real path is absent. A present-but-valueless
+    attribute is an empty string, not an absent attribute.
     """
-    attrs = {}
-    for match in ATTR_RE.finditer(raw):
-        attrs.setdefault(match.group("name"), match.group("value"))
-    return attrs
+    seen = {}
+    for name, value in attrs:
+        seen.setdefault(name, "" if value is None else value)
+    return seen
+
+
+class _Scanner(HTMLParser):
+    """Collect paths, texts, title/desc and style elements with ancestry.
+
+    HTMLParser already lowercases tag and attribute names, tolerates unquoted
+    values and whitespace around `=`, unescapes entities, keeps a quoted `>`
+    inside the value it belongs to, and never invokes handle_starttag for
+    tag-like text inside a comment or inside <script>/<style> raw text - each
+    of those is exactly a case a regex tag matcher mishandles. Ancestry is
+    tracked for <g>/<svg> only, the elements whose transform a child inherits.
+    """
+
+    def __init__(self, source: str):
+        super().__init__(convert_charrefs=True)
+        self.paths: list = []
+        self.texts: list = []
+        self.named: list = []      # <title> and <desc>
+        self.styles: list = []
+        self.error = None
+        self._groups: list = []    # (tag, how) per open <g>/<svg>
+        self._open: list = []      # (tag, Element) per open body element
+        self._line_starts = [0]
+        for index, char in enumerate(source):
+            if char == "\n":
+                self._line_starts.append(index + 1)
+        try:
+            self.feed(source)
+            self.close()
+        except Exception as exc:  # noqa: BLE001 - any parser failure fails closed
+            self.error = "%s: %s" % (type(exc).__name__, exc)
+
+    def _offset(self) -> int:
+        line, column = self.getpos()
+        return self._line_starts[line - 1] + column
+
+    def _ancestor(self):
+        for _tag, how in reversed(self._groups):
+            if how is not None:
+                return how
+        return None
+
+    def handle_starttag(self, tag, attrs):
+        self._start(tag, first_wins(attrs), closes=False)
+
+    def handle_startendtag(self, tag, attrs):
+        self._start(tag, first_wins(attrs), closes=True)
+
+    def _start(self, tag, attrs, closes):
+        if tag in GROUP_TAGS:
+            if not closes:
+                how = None
+                if "transform" in attrs:
+                    how = "an ancestor <g>/<svg> transform"
+                elif transform_carrier(attrs) is not None:
+                    how = "an ancestor <g>/<svg> style transform"
+                self._groups.append((tag, how))
+            return
+        if tag != "path" and tag not in BODY_TAGS:
+            return
+        element = Element(tag, attrs, self._offset(), self.getpos()[0], self._ancestor())
+        if tag == "path":
+            self.paths.append(element)
+            return
+        if tag == "text":
+            self.texts.append(element)
+        elif tag == "style":
+            self.styles.append(element)
+        else:
+            self.named.append(element)
+        if not closes:
+            self._open.append((tag, element))
+
+    def handle_endtag(self, tag):
+        stack = self._groups if tag in GROUP_TAGS else self._open if tag in BODY_TAGS else None
+        if stack is None:
+            return
+        # Pop back to the matching open tag - an unclosed inner element ends
+        # with its parent, as it does in the browser's tree.
+        for index in range(len(stack) - 1, -1, -1):
+            if stack[index][0] == tag:
+                del stack[index:]
+                return
+
+    def handle_data(self, data):
+        if self._open:
+            # Innermost only: a <title> tooltip inside a <text> is not part of
+            # the rendered label, and the browser does not draw it either.
+            self._open[-1][1].body += data
+
+
+def parse_document(source: str) -> _Scanner:
+    return _Scanner(source)
+
+
+def attrs_of(raw: str) -> dict:
+    """First-wins attributes of one tag's raw attribute text, via the parser."""
+
+    class _One(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.attrs = {}
+
+        def handle_starttag(self, tag, attrs):
+            self.attrs = first_wins(attrs)
+
+        handle_startendtag = handle_starttag
+
+    scanner = _One()
+    scanner.feed("<x " + raw + ">")
+    scanner.close()
+    return scanner.attrs
+
+
+def transform_carrier(attrs: dict):
+    """How this element carries a transform, phrased for the finding, or None.
+
+    A transform reaches the renderer by three carriers and the `transform`
+    ATTRIBUTE is only the most visible one. Reading the attribute alone lets
+    `style="transform: translateY(...)"` on a layer, a bound label or an
+    ancestor group move the rendered mark after its raw coordinates were
+    validated. The third carrier, a rule in a <style> block, is reported
+    separately because nothing here can tell which marks such a rule selects.
+    """
+    if "transform" in attrs:
+        return "transform=%r" % attrs["transform"]
+    style = attrs.get("style")
+    if style is not None:
+        found = CSS_MOVES_MARK_RE.search(style)
+        if found is not None:
+            return "style=%r (the %s property)" % (style, found.group("prop").lower())
+    return None
 
 
 def plain(body: str) -> str:
-    return html.unescape(TAG_RE.sub("", body)).strip()
+    return body.strip()
 
 
 def number(value):
@@ -205,8 +377,8 @@ def median(values: list) -> float:
     return (ordered[middle - 1] + ordered[middle]) / 2.0
 
 
-def named_text(source: str) -> str:
-    return " ".join(plain(m.group("body")) for m in NAMED_RE.finditer(source)).casefold()
+def named_text(doc: _Scanner) -> str:
+    return " ".join(plain(element.body) for element in doc.named).casefold()
 
 
 def looks_like_streamgraph(path: Path, source: str) -> bool:
@@ -221,32 +393,8 @@ def looks_like_streamgraph(path: Path, source: str) -> bool:
         return True
     if DECLARES_LAYER_RE.search(source):
         return True
-    described = named_text(source)
+    described = named_text(parse_document(source))
     return "streamgraph" in described or "stream graph" in described
-
-
-def transformed_spans(source: str) -> list:
-    """Offset ranges enclosed by a <g>/<svg> that carries a transform."""
-    events = []
-    for match in GROUP_OPEN_RE.finditer(source):
-        if match.group("selfclose"):
-            continue
-        events.append((match.start(), 0, "transform" in attrs_of(match.group("attrs"))))
-    for match in GROUP_CLOSE_RE.finditer(source):
-        events.append((match.start(), 1, False))
-    events.sort()
-    stack, spans = [], []
-    for position, kind, transformed in events:
-        if kind == 0:
-            stack.append((position, transformed))
-        elif stack:
-            start, was_transformed = stack.pop()
-            if was_transformed:
-                spans.append((start, position))
-    for start, was_transformed in stack:
-        if was_transformed:
-            spans.append((start, len(source)))
-    return spans
 
 
 def parse_path_points(d: str):
@@ -321,27 +469,19 @@ def parse_path_points(d: str):
     return (top, bottom, controls), None
 
 
-def parse_layers(source: str, findings: list, name: str) -> list:
+def parse_layers(doc: _Scanner, findings: list, name: str) -> list:
     """Layer paths, with anything unparseable reported rather than dropped."""
     layers = []
     seen = set()
-    for match in PATH_RE.finditer(source):
-        raw = match.group("attrs")
-        attrs = attrs_of(raw)
+    for element in doc.paths:
+        attrs = element.attrs
         label = attrs.get("data-layer")
         if label is None:
-            # A <path> with no data-layer is scenery. One whose raw text DOES
-            # declare data-layer and still parsed to nothing is markup this
-            # checker cannot read, and dropping it silently is how a lie ships.
-            if DECLARES_LAYER_RE.search(raw):
-                findings.append(
-                    "%s:%d: a <path> declares data-layer but its attributes could "
-                    "not be parsed — the checker will not silently skip markup it "
-                    "cannot read. Use plain double-quoted attributes"
-                    % (name, line_of(source, match.start()))
-                )
+            # A <path> with no data-layer is scenery by contract. The parser
+            # reads every tag the browser reads, so there is no "declared but
+            # unparseable" case left to report here.
             continue
-        line = line_of(source, match.start())
+        line = element.line
         if label in seen:
             findings.append(
                 "%s:%d: a second path declares data-layer=%r — one layer, one path"
@@ -398,60 +538,67 @@ def parse_layers(source: str, findings: list, name: str) -> list:
             continue
         seen.add(label)
         # Store bottom left-to-right; remember the drawn order for controls.
-        layers.append(Layer(label, values, top, list(reversed(bottom)), match.start()))
-        layers[-1].controls = controls  # type: ignore[attr-defined]
+        layer = Layer(label, values, top, list(reversed(bottom)), line)
+        layer.controls = controls
+        layers.append(layer)
     return layers
 
 
-def check_transforms(source: str, findings: list, name: str) -> None:
-    """No transform may move verified geometry or a bound label."""
-    spans = transformed_spans(source)
+# === CHECKS ==================================================================
 
-    def enclosed(offset):
-        return any(start <= offset <= end for start, end in spans)
 
-    def report(offset, what, how):
+def is_bound_label(attrs: dict) -> bool:
+    return "data-layer" in attrs or "data-period" in attrs or "data-index" in attrs
+
+
+def check_transforms(doc: _Scanner, findings: list, name: str) -> None:
+    """No transform may move verified geometry or a bound label.
+
+    Rejected rather than resolved, following verify-slopegraph.py: a partial
+    implementation of the SVG transform stack is worse than an honest
+    refusal, because it looks like coverage. All three carriers are held to
+    that rule - the `transform` attribute, an inline `style="transform: ..."`,
+    and a rule in a <style> block - on the element and on every <g>/<svg>
+    above it, because a gate that closes one of three doorways guards nothing.
+    """
+
+    def report(element, what, how):
         findings.append(
             "%s:%d: %s carries %s — this checker validates raw path and label "
             "coordinates, so a transform moves the rendered mark away from the "
             "number it was checked against. Bake the offset into the coordinates "
-            "instead" % (name, line_of(source, offset), what, how)
+            "instead" % (name, element.line, what, how)
         )
 
-    for match in PATH_RE.finditer(source):
-        attrs = attrs_of(match.group("attrs"))
-        if "data-layer" not in attrs:
-            continue
-        what = "layer %r" % attrs["data-layer"]
-        if "transform" in attrs:
-            report(match.start(), what, "transform=%r" % attrs["transform"])
-        elif enclosed(match.start()):
-            report(match.start(), what, "an ancestor <g>/<svg> transform")
+    def check_element(element, what):
+        how = transform_carrier(element.attrs)
+        if how is None:
+            how = element.ancestor
+        if how is not None:
+            report(element, what, how)
 
-    for match in TEXT_RE.finditer(source):
-        attrs = attrs_of(match.group("attrs"))
-        if "data-layer" not in attrs and "data-period" not in attrs \
-                and "data-index" not in attrs:
-            continue
-        what = "a bound label (%s)" % plain(match.group("body"))[:20]
-        if "transform" in attrs:
-            report(match.start(), what, "transform=%r" % attrs["transform"])
-        elif enclosed(match.start()):
-            report(match.start(), what, "an ancestor <g>/<svg> transform")
+    for element in doc.paths:
+        if "data-layer" in element.attrs:
+            check_element(element, "layer %r" % element.attrs["data-layer"])
 
-    for match in STYLE_RE.finditer(source):
-        found = CSS_TRANSFORM_RE.search(match.group("body"))
+    for element in doc.texts:
+        if is_bound_label(element.attrs):
+            check_element(element, "a bound label (%s)" % plain(element.body)[:20])
+
+    for element in doc.styles:
+        found = CSS_MOVES_MARK_RE.search(element.body)
         if found:
             findings.append(
-                "%s:%d: a CSS `transform` declaration — this checker cannot tell "
-                "which marks it applies to, and a transform on verified geometry "
+                "%s:%d: a CSS `%s` declaration — this checker cannot tell which "
+                "marks it applies to, and one that positions verified geometry "
                 "invalidates every coordinate here. Remove it, or bake the offset "
                 "into the coordinates"
-                % (name, line_of(source, match.start("body") + found.start()))
+                % (name, element.line + element.body.count("\n", 0, found.start()),
+                   found.group("prop").lower())
             )
 
 
-def check_columns(layers: list, findings: list, source: str, name: str) -> bool:
+def check_columns(layers: list, findings: list, name: str) -> bool:
     """Every layer must sample the same period columns. False stops geometry."""
     reference = [round(p[0], 3) for p in layers[0].top]
     agreed = True
@@ -462,7 +609,7 @@ def check_columns(layers: list, findings: list, source: str, name: str) -> bool:
                 "%s:%d: layer %r samples periods at %s but %r samples %s — every "
                 "layer must share one set of period columns or the stack cannot "
                 "be verified"
-                % (name, line_of(source, layer.offset), layer.name,
+                % (name, layer.line, layer.name,
                    "/".join("%g" % c for c in columns[:4]) + ("…" if len(columns) > 4 else ""),
                    layers[0].name,
                    "/".join("%g" % c for c in reference[:4]) + ("…" if len(reference) > 4 else ""))
@@ -471,7 +618,7 @@ def check_columns(layers: list, findings: list, source: str, name: str) -> bool:
     return agreed
 
 
-def check_scale(layers: list, findings: list, source: str, name: str) -> None:
+def check_scale(layers: list, findings: list, name: str) -> None:
     """Per-period thickness must equal value times one shared scale."""
     ratios = []
     for layer in layers:
@@ -507,8 +654,7 @@ def check_scale(layers: list, findings: list, source: str, name: str) -> None:
                 "declared value %g belongs at %.1f px on the shared scale — off by "
                 "%.1f px. A zero must pinch to zero, and no band may be inflated "
                 "to smooth the flow"
-                % (name, line_of(source, layer.offset), layer.name, thickness, i,
-                   value, value * scale, drift)
+                % (name, layer.line, layer.name, thickness, i, value, value * scale, drift)
             )
 
 
@@ -521,7 +667,7 @@ def stacked_order(layers: list) -> list:
     )
 
 
-def check_stack(layers: list, findings: list, source: str, name: str) -> None:
+def check_stack(layers: list, findings: list, name: str) -> None:
     """Layers must tile: each bottom is the previous top; envelope centred."""
     ordered = stacked_order(layers)
     for below, above in zip(ordered, ordered[1:]):
@@ -536,7 +682,7 @@ def check_stack(layers: list, findings: list, source: str, name: str) -> None:
                 "%s:%d: layer %r's bottom boundary sits %.1f px %s layer %r's top at "
                 "period %d — the stack must tile with no gaps and no overlaps, in "
                 "one fixed order, and no layer may be dropped from it silently"
-                % (name, line_of(source, above.offset), above.name, abs(gap),
+                % (name, above.line, above.name, abs(gap),
                    "below" if gap > 0 else "above", below.name, i)
             )
 
@@ -557,11 +703,11 @@ def check_stack(layers: list, findings: list, source: str, name: str) -> None:
             "%.1f px off centre at period %d. A streamgraph centres every period "
             "on one midline (baseline = -total/2); a drifting or bottom-pinned "
             "baseline is a different chart wearing this one's name"
-            % (name, line_of(source, ordered[0].offset), drift, i)
+            % (name, ordered[0].line, drift, i)
         )
 
 
-def check_controls(layers: list, findings: list, source: str, name: str) -> None:
+def check_controls(layers: list, findings: list, name: str) -> None:
     """Control points must sit where Catmull-Rom at 1/6 chord puts them."""
     for layer in layers:
         boundaries = {
@@ -588,8 +734,7 @@ def check_controls(layers: list, findings: list, source: str, name: str) -> None
                 "control point sits %.1f px from where Catmull-Rom at 1/6 chord "
                 "puts it (segment %d). The curve between vertices is determined "
                 "by the vertices; it is not free to editorialise"
-                % (name, line_of(source, layer.offset), layer.name, boundary,
-                   drift, i)
+                % (name, layer.line, layer.name, boundary, drift, i)
             )
 
 
@@ -613,12 +758,12 @@ def layers_named_in(body: str, names) -> set:
     return found
 
 
-def check_legend(layers: list, source: str, findings: list, name: str) -> None:
+def check_legend(layers: list, doc: _Scanner, findings: list, name: str) -> None:
     """Every layer in the legend with its total; every total a sum, not a typo."""
     declared = {layer.name: layer for layer in layers}
     entries = {}
-    for match in TEXT_RE.finditer(source):
-        attrs = attrs_of(match.group("attrs"))
+    for element in doc.texts:
+        attrs = element.attrs
         label = attrs.get("data-layer")
         if label is None:
             continue
@@ -626,18 +771,17 @@ def check_legend(layers: list, source: str, findings: list, name: str) -> None:
             findings.append(
                 "%s:%d: a legend entry names layer %r, which no path declares — a "
                 "label with no band is not verifiable and reads as data"
-                % (name, line_of(source, match.start()), label)
+                % (name, element.line, label)
             )
             continue
         if label in entries:
             findings.append(
                 "%s:%d: a second legend entry for layer %r — one layer, one entry, "
                 "or the figure states two totals for one band"
-                % (name, line_of(source, match.start()), label)
+                % (name, element.line, label)
             )
             continue
-        entries[label] = (attrs.get("data-total"), plain(match.group("body")),
-                          match.start())
+        entries[label] = (attrs.get("data-total"), plain(element.body), element.line)
 
     for layer in layers:
         entry = entries.get(layer.name)
@@ -646,16 +790,16 @@ def check_legend(layers: list, source: str, findings: list, name: str) -> None:
                 "%s:%d: layer %r has no legend entry (a <text> with data-layer and "
                 "data-total) — a streamgraph names every layer and prints its "
                 "total, or a band can be dropped from the reading silently"
-                % (name, line_of(source, layer.offset), layer.name)
+                % (name, layer.line, layer.name)
             )
             continue
-        declared_total, body, offset = entry
+        declared_total, body, line = entry
         total = number(declared_total)
         if total is None:
             findings.append(
                 "%s:%d: the legend entry for %r has no readable data-total — the "
                 "printed total must be bound to the number it claims to state"
-                % (name, line_of(source, offset), layer.name)
+                % (name, line, layer.name)
             )
             continue
         expected = sum(layer.values)
@@ -663,20 +807,20 @@ def check_legend(layers: list, source: str, findings: list, name: str) -> None:
             findings.append(
                 "%s:%d: layer %r declares a total of %g but its values sum to %g — "
                 "the total is a sum, not a typed number"
-                % (name, line_of(source, offset), layer.name, total, expected)
+                % (name, line, layer.name, total, expected)
             )
         shown, reason = printed_number(body)
         if shown is None:
             findings.append(
                 "%s:%d: the legend entry for %r %s (%r) — print exactly one "
                 "complete total per entry, and keep digits out of layer names"
-                % (name, line_of(source, offset), layer.name, reason, body[:28])
+                % (name, line, layer.name, reason, body[:28])
             )
         elif abs(shown - total) > VALUE_TOLERANCE:
             findings.append(
                 "%s:%d: the legend entry for %r prints %r but declares %g — the "
                 "label and the binding must state one number"
-                % (name, line_of(source, offset), layer.name, body[:28], total)
+                % (name, line, layer.name, body[:28], total)
             )
 
         # The number is bound; the NAME must be bound too. An entry reading
@@ -691,35 +835,35 @@ def check_legend(layers: list, source: str, findings: list, name: str) -> None:
                 "that layer — bind the visible name as well as the number, or "
                 "an entry can label the wrong band while its data-layer and its "
                 "total stay right"
-                % (name, line_of(source, offset), layer.name, body[:28])
+                % (name, line, layer.name, body[:28])
             )
         elif printed - {layer.name}:
             findings.append(
                 "%s:%d: the legend entry for %r also prints %s — one entry names "
                 "one band, or the reader cannot tell which band it labels"
-                % (name, line_of(source, offset), layer.name,
+                % (name, line, layer.name,
                    ", ".join(repr(other)
                              for other in sorted(printed - {layer.name})))
             )
 
 
-def check_captions(layers: list, source: str, findings: list, name: str) -> None:
+def check_captions(layers: list, doc: _Scanner, findings: list, name: str) -> None:
     """Each period caption must sit on its own column and read its binding."""
     columns = [p[0] for p in layers[0].top]
     count = len(columns)
     seen = {}
-    for match in TEXT_RE.finditer(source):
-        attrs = attrs_of(match.group("attrs"))
+    for element in doc.texts:
+        attrs = element.attrs
         if "data-index" not in attrs and "data-period" not in attrs:
             continue
         index_raw = attrs.get("data-index")
         period = attrs.get("data-period")
-        offset = match.start()
+        line = element.line
         if index_raw is None or period is None:
             findings.append(
                 "%s:%d: a period caption must carry both data-index (its column) "
                 "and data-period (its text) — half a binding can still be swapped"
-                % (name, line_of(source, offset))
+                % (name, line)
             )
             continue
         index = number(index_raw)
@@ -727,18 +871,17 @@ def check_captions(layers: list, source: str, findings: list, name: str) -> None
             findings.append(
                 "%s:%d: a period caption declares data-index=%r, which is not a "
                 "column of this figure (0–%d)"
-                % (name, line_of(source, offset), index_raw, count - 1)
+                % (name, line, index_raw, count - 1)
             )
             continue
         index = int(index)
         if index in seen:
             findings.append(
                 "%s:%d: a second caption for period %d — one column, one caption"
-                % (name, line_of(source, offset), index)
+                % (name, line, index)
             )
             continue
-        seen[index] = (number(attrs.get("x")), period, plain(match.group("body")),
-                       offset)
+        seen[index] = (number(attrs.get("x")), period, plain(element.body), line)
 
     for index in range(count):
         if index not in seen:
@@ -748,28 +891,38 @@ def check_captions(layers: list, source: str, findings: list, name: str) -> None
                 % (name, index, index)
             )
             continue
-        x, period, body, offset = seen[index]
+        x, period, body, line = seen[index]
         expected = columns[index]
         if x is None or abs(x - expected) > CAPTION_TOLERANCE:
             findings.append(
                 "%s:%d: the caption for period %d (%r) is drawn at x=%s but its "
                 "column is at x=%g — a caption off its column renames the bucket"
-                % (name, line_of(source, offset), index, body[:16],
+                % (name, line, index, body[:16],
                    "%g" % x if x is not None else "?", expected)
             )
         if body != period:
             findings.append(
                 "%s:%d: the caption for period %d reads %r but declares "
                 "data-period=%r — the visible text and its binding must agree"
-                % (name, line_of(source, offset), index, body[:16], period)
+                % (name, line, index, body[:16], period)
             )
+
+
+# === DRIVER ==================================================================
 
 
 def check_source(path: Path, raw: str) -> list:
     """Findings for one already-read document."""
-    source = blank_comments(raw)
     findings: list = []
-    layers = parse_layers(source, findings, path.name)
+    doc = parse_document(raw)
+    if doc.error is not None:
+        findings.append(
+            "%s: presents as a streamgraph but could not be parsed as HTML (%s) — "
+            "refusing to report OK on a file this checker could not read"
+            % (path.name, doc.error)
+        )
+        return findings
+    layers = parse_layers(doc, findings, path.name)
 
     if len(layers) < 2:
         findings.append(
@@ -780,13 +933,13 @@ def check_source(path: Path, raw: str) -> list:
         )
         return findings
 
-    check_transforms(source, findings, path.name)
-    if check_columns(layers, findings, source, path.name):
-        check_scale(layers, findings, source, path.name)
-        check_stack(layers, findings, source, path.name)
-        check_controls(layers, findings, source, path.name)
-        check_captions(layers, source, findings, path.name)
-    check_legend(layers, source, findings, path.name)
+    check_transforms(doc, findings, path.name)
+    if check_columns(layers, findings, path.name):
+        check_scale(layers, findings, path.name)
+        check_stack(layers, findings, path.name)
+        check_controls(layers, findings, path.name)
+        check_captions(layers, doc, findings, path.name)
+    check_legend(layers, doc, findings, path.name)
     return findings
 
 
