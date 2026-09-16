@@ -13,6 +13,12 @@ amplitude and pitch rather than memorising the shipped layout: a valid ridgeline
 at a different top, pitch and scale must pass, and the budget rules must fire at
 BOTH ends on counts the shipped example cannot be mutated into.
 
+The parsing cases hold the checker to reading markup as a browser does: a
+quoted `>` inside an attribute does not end the tag, a repeated attribute keeps
+its first value, a comment is never live markup, and a transform is refused on
+all three of its carriers (attribute, inline style, <style> rule) — each in
+both polarities, so an honest figure written the odd way still passes.
+
 The last case pins the scope treaty with the sibling Line-variant checkers.
 `data-bins` on a `<path>` is this contract's vocabulary; `data-series`,
 `data-ranks` and `data-layer` belong to the slopegraph, bump and streamgraph
@@ -95,6 +101,18 @@ def case(failures, directory, name, source, original, expect, describe):
                         % (describe, output.strip()))
     else:
         print("OK: %s is rejected" % describe)
+
+
+def accept(failures, directory, name, source, original, describe):
+    """One mutation the browser renders honestly: a real edit, and accepted."""
+    if source == original:
+        failures.append("could not build the %s fixture (anchor moved)" % name)
+        return
+    code, output = run(write(directory, "%s.html" % name, source))
+    if code != 0:
+        failures.append("%s was rejected: %s" % (describe, output.strip()))
+    else:
+        print("OK: %s is accepted" % describe)
 
 
 def hump(n_bins, peak_at, height=12, step=3):
@@ -453,6 +471,184 @@ def main() -> int:
             source, "one amplitude",
             "a falsified bin in single-quoted attributes",
         )
+
+        # 17b. Markup is read as the browser reads it. A regex tag matcher
+        #     stops at the first `>` it sees, so a quoted `>` before an
+        #     attribute hid that attribute from the checker while Chromium
+        #     honoured it. Every case here is a shape the browser parses one
+        #     way; the checker must parse it the same way, in both polarities.
+        NAME_LABEL = ('<text data-ridge="checkout-api" data-role="name" x="304" '
+                      'y="323.5"')
+        case(
+            failures, directory, "quoted-gt-ancestor",
+            source.replace(FOCAL_PATH,
+                           '<g data-note=">" transform="translate(0 8)">' + FOCAL_PATH
+                           + "</g>", 1),
+            source, "an ancestor <g>/<svg> transform",
+            "an ancestor <g> hiding its transform behind a quoted >",
+        )
+        case(
+            failures, directory, "quoted-gt-ancestor-style",
+            source.replace(FOCAL_PATH,
+                           '<g data-note=">" style="translate: 0 8px">' + FOCAL_PATH
+                           + "</g>", 1),
+            source, "an ancestor <g>/<svg> style transform",
+            "an ancestor <g> hiding an inline style transform behind a quoted >",
+        )
+        accept(
+            failures, directory, "quoted-gt-honest",
+            source.replace('<path data-ridge="checkout-api"',
+                           '<path data-note=">" data-ridge="checkout-api"', 1),
+            source, "an honest ridge with a quoted > before its bindings",
+        )
+        case(
+            failures, directory, "quoted-gt-lie",
+            source.replace('<path data-ridge="checkout-api"',
+                           '<path data-note=">" data-ridge="checkout-api"', 1)
+                  .replace(FOCAL_D, PRIVATE_AMPLITUDE_D, 1),
+            source, "one amplitude",
+            "a ridge on its own amplitude with a quoted > before its bindings",
+        )
+        case(
+            failures, directory, "quoted-gt-label",
+            source.replace(NAME_LABEL, NAME_LABEL.replace(
+                "<text ", '<text data-note=">" transform="translate(0 56)" ', 1), 1),
+            source, "carries transform=",
+            "a name label hiding a transform behind a quoted >",
+        )
+
+        # Three carriers reach the renderer; the `transform` attribute is only
+        # the most visible. Each is refused on the element and on an ancestor.
+        case(
+            failures, directory, "inline-transform",
+            source.replace('<path data-ridge="checkout-api"',
+                           '<path style="transform: translateY(8px)" '
+                           'data-ridge="checkout-api"', 1),
+            source, "(the transform property)",
+            "an inline style transform on a ridge outline",
+        )
+        case(
+            failures, directory, "inline-d",
+            source.replace('<path data-ridge="checkout-api"',
+                           '<path style="d: path(\'M 0 0 L 4 4 Z\')" '
+                           'data-ridge="checkout-api"', 1),
+            source, "(the d property)",
+            "an inline CSS d property replacing a verified outline",
+        )
+        case(
+            failures, directory, "inline-rule-transform",
+            source.replace('<line data-ridge="checkout-api" data-role="baseline"',
+                           '<line style="transform: translateY(8px)" '
+                           'data-ridge="checkout-api" data-role="baseline"', 1),
+            source, "ridge 'checkout-api' carries style=",
+            "an inline style transform on a baseline rule",
+        )
+        case(
+            failures, directory, "inline-label-translate",
+            source.replace(NAME_LABEL, NAME_LABEL.replace(
+                "<text ", '<text style="translate: 0 56px" ', 1), 1),
+            source, "(the translate property)",
+            "an inline translate property on a bound label",
+        )
+        case(
+            failures, directory, "vendor-ancestor",
+            source.replace(FOCAL_PATH,
+                           '<g style="-webkit-transform: translateY(8px)">' + FOCAL_PATH
+                           + "</g>", 1),
+            source, "an ancestor <g>/<svg> style transform",
+            "a vendor-prefixed transform on an ancestor group's inline style",
+        )
+        accept(
+            failures, directory, "inline-text-transform",
+            source.replace(NAME_LABEL, NAME_LABEL.replace(
+                "<text ", '<text style="text-transform: uppercase; display: block" ', 1), 1),
+            source, "an inline text-transform on a bound label",
+        )
+        case(
+            failures, directory, "css-translate",
+            source.replace("<style>", "<style>\n    svg path { translate: 0 8px; }", 1),
+            source, "CSS `translate` declaration",
+            "a CSS translate declaration in a style block",
+        )
+        case(
+            failures, directory, "css-vendor-transform",
+            source.replace("<style>",
+                           "<style>\n    svg path {\n      -webkit-transform: scaleY(1.1);\n    }",
+                           1),
+            source, "CSS `transform` declaration",
+            "a vendor-prefixed CSS transform declaration in a style block",
+        )
+
+        # First-wins, both polarities: the browser applies the FIRST of a
+        # repeated attribute and the rest are not in the document at all, so
+        # the checker must report exactly when that first one lies.
+        accept(
+            failures, directory, "dup-style-honest-first",
+            source.replace(FOCAL_PATH,
+                           '<g style="opacity: 1" style="transform: translateY(8px)">'
+                           + FOCAL_PATH + "</g>", 1),
+            source, "a duplicated style on an ancestor whose first value is honest",
+        )
+        case(
+            failures, directory, "dup-style-lie-first",
+            source.replace(FOCAL_PATH,
+                           '<g style="transform: translateY(8px)" style="opacity: 1">'
+                           + FOCAL_PATH + "</g>", 1),
+            source, "an ancestor <g>/<svg> style transform",
+            "a duplicated style on an ancestor whose first value moves the ridge",
+        )
+        case(
+            failures, directory, "dup-d-lie-first",
+            source.replace(FOCAL_D, PRIVATE_AMPLITUDE_D + " " + FOCAL_D, 1),
+            source, "one amplitude",
+            "a duplicated d whose first value is on a private amplitude",
+        )
+        accept(
+            failures, directory, "dup-d-honest-first",
+            source.replace(FOCAL_D, FOCAL_D + " " + PRIVATE_AMPLITUDE_D, 1),
+            source, "a duplicated d whose first value is honest",
+        )
+
+        accept(
+            failures, directory, "self-closing-g",
+            source.replace(FOCAL_PATH, '<g transform="translate(0 8)"/>' + FOCAL_PATH, 1),
+            source, "a self-closing <g/> with a transform, which encloses nothing",
+        )
+        accept(
+            failures, directory, "commented-ancestor",
+            source.replace(FOCAL_PATH,
+                           '<!-- <g transform="translate(0 8)"> -->' + FOCAL_PATH, 1),
+            source, "a commented-out ancestor transform",
+        )
+        accept(
+            failures, directory, "end-tag-in-attribute",
+            source.replace('text-anchor="end">checkout-api</text>',
+                           'text-anchor="end"><tspan data-note="</text>">checkout-api'
+                           "</tspan></text>", 1),
+            source, "an end tag inside a quoted attribute of a bound label",
+        )
+        case(
+            failures, directory, "upper-case",
+            source.replace('<path data-ridge="checkout-api" data-baseline="320"',
+                           '<PATH DATA-RIDGE="checkout-api" DATA-BASELINE="320"', 1)
+                  .replace(FOCAL_D, PRIVATE_AMPLITUDE_D, 1),
+            source, "one amplitude",
+            "a ridge on its own amplitude written with upper-case tag and attribute names",
+        )
+
+        # A broken quote must neither crash the checker nor pass the file.
+        broken = source.replace('data-baseline="320"', 'data-baseline="320', 1)
+        if broken == source:
+            failures.append("could not build the broken-quote fixture (anchor moved)")
+        else:
+            code, output = run(write(directory, "broken-quote.html", broken))
+            if code == 0:
+                failures.append("a broken attribute quote was accepted")
+            elif "Traceback" in output:
+                failures.append("a broken attribute quote crashed the checker: %s"
+                                % output.strip())
+            else:
+                print("OK: a broken attribute quote neither crashes nor passes")
 
         # 18. Fail closed on a file that claims the type and yields nothing.
         empty = ("<html><head><title>weekly ridgeline</title></head>"

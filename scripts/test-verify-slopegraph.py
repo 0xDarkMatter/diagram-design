@@ -567,12 +567,15 @@ def run_cases(h: Harness) -> int:
         r"'Search' draws its to endpoint",
     )
 
+    # The browser reads an unquoted value up to the next whitespace or `>`,
+    # so this is a real series drawn nowhere near its declared values. The
+    # checker reads exactly that and reports what it finds.
     h.expect_finding(
-        "a <line> declaring data-series whose attributes cannot be parsed is reported",
+        "an unquoted series line is read as the browser reads it, and its lie is reported",
         document(honest_rows_block()
                  + "  <line data-series=unquoted data-from=1 data-to=2 "
                    "x1=320 y1=40 x2=680 y2=420 stroke='#2d3142'/>\n"),
-        r"declares data-series but its attributes could not be parsed",
+        r"series 'unquoted' draws its (from|to) endpoint",
     )
 
     h.expect_clean(
@@ -626,6 +629,179 @@ def run_cases(h: Harness) -> int:
     h.expect_clean(
         "a shared scale on billion-magnitude values is not reported as shifted",
         document(billions),
+    )
+
+    # ── 7. Markup is read as the browser reads it ─────────────────────────
+    # A regex tag matcher stops at the first `>` it sees, so a quoted `>`
+    # before an attribute hid that attribute from the checker while Chromium
+    # honoured it. Every case here is a shape the browser parses one way; the
+    # checker must parse it the same way, in both polarities.
+    search_line = series("Search", 512, 208)
+    search_nudged = series("Search", 512, 208, y2=y(208) - 3)
+    others = honest_rows_block([r for r in ROWS if r[0] != "Search"])
+
+    h.expect_finding(
+        "an ancestor <g> hiding its transform behind a quoted > is still reported",
+        document('  <g data-note=">" transform="translate(0 -80)">\n'
+                 + honest_rows_block() + "  </g>\n"),
+        r"series 'Search' carries an ancestor <g>/<svg> transform",
+    )
+
+    h.expect_finding(
+        "an ancestor <g> hiding an inline style transform behind a quoted > is reported",
+        document('  <g data-note=">" style="translate: 0 80px">\n'
+                 + honest_rows_block() + "  </g>\n"),
+        r"series 'Search' carries an ancestor <g>/<svg> style transform",
+    )
+
+    h.expect_clean(
+        "an honest series line with a quoted > before its bindings is parsed and passes",
+        document(search_line.replace("  <line ", '  <line data-note=">" ', 1)
+                 + labels("Search", 512, 208) + others),
+    )
+
+    h.expect_finding(
+        "a dishonest series line with a quoted > before its bindings is still reported",
+        document(search_nudged.replace("  <line ", '  <line data-note=">" ', 1)
+                 + labels("Search", 512, 208) + others),
+        r"series 'Search' draws its to endpoint.*off by 3\.0 px",
+    )
+
+    h.expect_finding(
+        "a value label with a quoted > before its bindings is still bound and checked",
+        document(honest_rows_block()).replace(
+            '  <text data-series="Search" data-end="to" x="696"',
+            '  <text data-note=">" data-series="Search" data-end="to" x="696"', 1
+        ).replace(">208</text>", ">180</text>", 1),
+        r"series 'Search' prints '180' at its to endpoint but declares 208",
+    )
+
+    h.expect_finding(
+        "a state caption hiding a transform behind a quoted > is reported",
+        document(honest_rows_block()).replace(
+            '  <text data-axis="from"',
+            '  <text data-note=">" transform="translate(0 40)" data-axis="from"', 1),
+        r"bound label \(BEFORE\) carries transform",
+    )
+
+    # Three carriers reach the renderer; the `transform` attribute is only the
+    # most visible. Each is refused on the element and on an ancestor.
+    h.expect_finding(
+        "an inline style transform on a series line is reported",
+        document(search_line.replace(
+            "  <line ", '  <line style="transform: translateY(80px)" ', 1)
+            + labels("Search", 512, 208) + others),
+        r"series 'Search' carries style=.*\(the transform property\)",
+    )
+
+    h.expect_finding(
+        "an inline translate property on a bound label is reported",
+        document(honest_rows_block()).replace(
+            '  <text data-series="Search" data-end="from"',
+            '  <text style="translate: 0 40px" data-series="Search" data-end="from"', 1),
+        r"bound label .* carries style=.*\(the translate property\)",
+    )
+
+    h.expect_finding(
+        "an inline CSS y property on a bound label replaces the verified y and is reported",
+        document(honest_rows_block()).replace(
+            '  <text data-series="Search" data-end="from"',
+            '  <text style="y: 400px" data-series="Search" data-end="from"', 1),
+        r"bound label .* carries style=.*\(the y property\)",
+    )
+
+    h.expect_finding(
+        "a vendor-prefixed transform on an ancestor group's inline style is reported",
+        document('  <g style="-webkit-transform: translateY(80px)">\n'
+                 + honest_rows_block() + "  </g>\n"),
+        r"carries an ancestor <g>/<svg> style transform",
+    )
+
+    h.expect_clean(
+        "an inline text-transform on a bound label is not read as a transform",
+        document(honest_rows_block()).replace(
+            '  <text data-series="Search" data-end="from"',
+            '  <text style="text-transform: uppercase; display: block" '
+            'data-series="Search" data-end="from"', 1),
+    )
+
+    h.expect_finding(
+        "a CSS translate declaration in a style block is reported",
+        HEAD + "<style>line { translate: 0 80px; }</style>\n"
+        + CAPTIONS + honest_rows_block() + TAIL,
+        r"a CSS `translate` declaration",
+    )
+
+    h.expect_finding(
+        "a vendor-prefixed CSS transform declaration in a style block is reported",
+        HEAD + "<style>.series {\n  -webkit-transform: translateY(80px);\n}</style>\n"
+        + CAPTIONS + honest_rows_block() + TAIL,
+        r"a CSS `transform` declaration",
+    )
+
+    # First-wins on an ancestor, both polarities: the browser applies the
+    # first `style`, so the checker must report exactly when that one moves.
+    h.expect_clean(
+        "a duplicated style on an ancestor keeps the browser's first, honest value",
+        document('  <g style="opacity: 1" style="transform: translateY(80px)">\n'
+                 + honest_rows_block() + "  </g>\n"),
+    )
+
+    h.expect_finding(
+        "a duplicated style on an ancestor keeps the browser's first, dishonest value",
+        document('  <g style="transform: translateY(80px)" style="opacity: 1">\n'
+                 + honest_rows_block() + "  </g>\n"),
+        r"carries an ancestor <g>/<svg> style transform",
+    )
+
+    # The same rule on a mark's own coordinates: HTML drops a repeated
+    # attribute and keeps the first, so a last-wins reader validates bytes
+    # that are not in the document.
+    h.expect_finding(
+        "a duplicated y2 is read first-wins, so a dishonest first y2 is reported",
+        document(search_line.replace(
+            ' y2="', ' y2="%g" y2="' % (y(208) - 3), 1)
+            + labels("Search", 512, 208) + others),
+        r"series 'Search' draws its to endpoint.*off by 3\.0 px",
+    )
+
+    h.expect_clean(
+        "a duplicated y2 whose first value is honest still passes",
+        document(search_line.replace(
+            ' stroke=', ' y2="%g" stroke=' % (y(208) - 3), 1)
+            + labels("Search", 512, 208) + others),
+    )
+
+    h.expect_clean(
+        "a self-closing <g/> with a transform encloses nothing and is not reported",
+        document('  <g transform="translate(0 80)"/>\n' + honest_rows_block()),
+    )
+
+    h.expect_clean(
+        "a commented-out ancestor transform is not read as live markup",
+        document('  <!-- <g transform="translate(0 80)"> -->\n' + honest_rows_block()),
+    )
+
+    h.expect_clean(
+        "an end tag inside a quoted attribute does not end a bound label's text",
+        document(honest_rows_block()).replace(
+            'data-role="name" x="272" y="%g">Search<' % (y(512) + 3.5),
+            'data-role="name" x="272" y="%g"><tspan data-note="</text>">Search</tspan><'
+            % (y(512) + 3.5), 1),
+    )
+
+    h.expect_finding(
+        "upper-case tag and attribute names are read case-insensitively, as the browser does",
+        document(search_nudged.replace(
+            '  <line data-series="Search"', '  <LINE DATA-SERIES="Search"', 1)
+            + labels("Search", 512, 208) + others),
+        r"series 'Search' draws its to endpoint.*off by 3\.0 px",
+    )
+
+    h.expect_finding(
+        "a broken attribute quote never crashes the checker and never passes",
+        document(honest_rows_block()).replace('data-from="512"', 'data-from="512', 1),
+        r".",
     )
 
     # ── The fixture-isolation fix, held in place ──────────────────────────
