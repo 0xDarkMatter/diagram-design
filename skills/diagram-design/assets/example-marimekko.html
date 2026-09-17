@@ -20,6 +20,7 @@
     .frame { max-width: 1200px; width: 100%; }
     .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
     h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; margin-bottom: 1.5rem; }
+    .diagram-container { width: 100%; overflow-x: auto; }
     svg { width: 100%; min-width: 760px; display: block; }
   </style>
 </head>
@@ -28,6 +29,7 @@
     <p class="eyebrow">Marimekko · Diagram Design</p>
     <h1>One pipeline on one runner is a fifth of all CI time</h1>
 
+    <div class="diagram-container">
     <svg viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="marimekko-title marimekko-desc">
       <title id="marimekko-title">One pipeline on one runner is a fifth of all CI time</title>
       <desc id="marimekko-desc">Marimekko chart of 10,000 CI minutes over 30 days, split five pipelines wide and up to three runner operating systems tall; column width is each pipeline's share of all minutes, segment height is each runner's share within its pipeline, and the mobile pipeline's macOS runners alone account for about 20 percent of the total.</desc>
@@ -140,6 +142,7 @@
       <text x="500" y="496" fill="#f5f5f5" font-size="7" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">i</text>
       <text x="516" y="497" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">docs · 260 min on Linux, 2.6% — too narrow to label</text>
     </svg>
+    </div>
   </div>
 </body>
 </html>

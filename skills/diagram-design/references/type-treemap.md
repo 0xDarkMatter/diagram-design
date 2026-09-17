@@ -78,6 +78,7 @@ Not for: a one-way split (that is the parent treemap, and a marimekko with one s
 - **Column and series budgets:** 3–8 columns, 2–5 series. Widths under ~24px cannot hold a label in either direction and take the treemap's information mark instead.
 - **Labels sit inside the segment**, top-left, 16px in, in the treemap's tiers by height: 56px and above takes the name in Geist 12px 600 with the amount and within-column share in Geist Mono 9px on the next line (`2,140 min · 68%`); 32–55px takes the same pair at 11px/9px on a tighter pitch; below that, the mark or nothing. The focal segment may add what its share is *of* (`83% of mobile`) because that is the one number a reader is most likely to misread as a share of the whole. Never shrink or widen a segment to fit a label.
 - **Column captions** print the column's name and its share of the whole (`web · 31%`), so the width can be read as a number without a ruler.
+- **Hold the 760px canvas on narrow screens.** The SVG keeps `min-width: 760px` so its 9px labels stay readable, and sits inside a local `overflow-x: auto` wrapper (`.diagram-container`) so a phone scrolls the chart, not the page. `scripts/lint-render.py --all` renders every marimekko at 390px and fails on page-level overflow, a shrunken canvas, or a missing local scroller.
 
 #### Colour
 
