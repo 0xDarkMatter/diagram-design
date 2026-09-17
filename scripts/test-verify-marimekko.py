@@ -14,7 +14,12 @@ examples and must skip all three.
 
 The parser cases are the ones the HTMLParser rewrite exists for: a quoted `>`
 inside an attribute value must not end the tag, a repeated attribute must keep
-its FIRST value, and a tag inside a comment must never be live markup.
+its FIRST value, and a tag inside a comment must never be live markup. Scope
+detection is held to the same reading: a commented-out rect claims nothing, a
+live rect behind a quoted `>` is claimed and verified, and a data-segment
+swallowed by an unbalanced quote fails closed. The CSS cases pin the SVG 2
+size properties (`width`/`height` resize a rect behind its attributes) and
+comment blanking (`/**/` is whitespace to the browser) in both polarities.
 
 Fixtures live in a per-process temporary directory, never under the
 repository root, and two cases at the end hold that isolation in place.
@@ -396,6 +401,55 @@ def run_cases(h: Harness) -> int:
                      honest("<style>rect { -webkit-transform: rotate(1deg); }</style>\n"),
                      r"CSS `transform` declaration")
 
+    # ── CSS width/height resize a rect behind its attributes (SVG 2) ─────
+    h.expect_finding("an inline style width on a segment rect is refused",
+                     document(columns(), CAPTIONS, KEYS).replace(
+                         'data-column="C" data-segment="Linux"',
+                         'style="width: 600px" data-column="C" data-segment="Linux"'),
+                     r"segment C × Linux carries style=.*the width property")
+    h.expect_finding("an inline style height on a segment rect is refused",
+                     document(columns(), CAPTIONS, KEYS).replace(
+                         'data-column="C" data-segment="Linux"',
+                         'style="height: 10px" data-column="C" data-segment="Linux"'),
+                     r"segment C × Linux carries style=.*the height property")
+    h.expect_finding("an inline style width on an ancestor <g> is refused",
+                     document('<g style="width: 600px">\n', columns(), "</g>\n", CAPTIONS, KEYS),
+                     r"ancestor <g>/<svg> style transform")
+    h.expect_finding("an inline style height on an ancestor <g> is refused",
+                     document('<g style="height: 10px">\n', columns(), "</g>\n", CAPTIONS, KEYS),
+                     r"ancestor <g>/<svg> style transform")
+    h.expect_finding("a `width` rule selecting rects in a <style> block is refused",
+                     honest("<style>rect { width: 600px; }</style>\n"),
+                     r"CSS `width` declaration")
+    h.expect_finding("a `height` rule selecting by data-segment in a <style> block is refused",
+                     honest("<style>[data-segment] { height: 10px; }</style>\n"),
+                     r"CSS `height` declaration")
+    h.expect_finding("a `width` rule reaching rects through a `*` subject is refused",
+                     honest("<style>svg > * { width: 600px; }</style>\n"),
+                     r"CSS `width` declaration")
+    h.expect_clean("a `width`/`height` rule whose subject no segment rect can be "
+                   "(the svg, a legend swatch class) is not a geometry move",
+                   honest("<style>svg { width: 100%; } .card-dot { width: 7px; height: 7px; }"
+                          " .legend text { height: 1em; }</style>\n"))
+
+    # ── A CSS comment is whitespace to the browser, so it is here too ─────
+    h.expect_finding("a `/**/`-prefixed inline transform on a segment is refused",
+                     document(columns(), CAPTIONS, KEYS).replace(
+                         'data-column="C" data-segment="Linux"',
+                         'style="/**/transform: translateY(-8px)" data-column="C" '
+                         'data-segment="Linux"'),
+                     r"segment C × Linux carries style=.*the transform property")
+    h.expect_finding("a `/**/`-prefixed width in a <style> rule is refused",
+                     honest("<style>rect { /**/ width: 600px; }</style>\n"),
+                     r"CSS `width` declaration")
+    h.expect_clean("a transform inside a CSS comment, inline or in a <style> block, is "
+                   "not a geometry move",
+                   document(columns(), CAPTIONS, KEYS,
+                            label("A", "Linux", XA + 16, TOP + 28, "300 min",
+                                  extra='style="fill: #2d3142 /* transform: translateY(40px) */"'),
+                            "<style>rect { /* transform: translateY(-8px); */ fill: red; }"
+                            "</style>\n"))
+
     # ── Labels bound to meaning ───────────────────────────────────────────
     h.expect_finding("a caption anchored off its column centre is rejected",
                      document(columns(), KEYS,
@@ -503,6 +557,49 @@ def run_cases(h: Harness) -> int:
                      r"declares 0 verifiable column\(s\)", name="example-anything.html")
     h.expect_detected("data-segment on a <rect> claims a file whatever it is called",
                       document(columns()), "example-anything.html")
+
+    # ── Scope is read the way the browser reads, not by a tag regex ───────
+    # Each fixture is named and described for another family, so the only
+    # signal that could claim it is the data-segment in its markup.
+    commented_out = (HEAD.replace("Marimekko fixture.", "Bar fixture.")
+                     + '  <!-- <rect data-column="Z" data-segment="Linux" data-amount="900" '
+                     'x="0" y="0" width="1" height="1"/> -->\n' + TAIL)
+    h.expect_out_of_scope("a data-segment rect that exists only inside a comment never "
+                          "claims a file", commented_out, "example-bar-fixture.html")
+    commented_path = h.path_for("example-bar-fixture.html")
+    commented_path.write_text(commented_out, encoding="utf-8")
+    try:
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/verify-marimekko.py"), str(commented_path)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+    finally:
+        commented_path.unlink()
+    h.check(
+        "the CLI skips the commented-out fixture cleanly, as an --all run would",
+        result.returncode == 0 and "1 file(s) skipped as out of scope" in result.stdout,
+        "exit=%d stdout=%s" % (result.returncode, result.stdout.strip()),
+    )
+    broken = (HEAD.replace("Marimekko fixture.", "Bar fixture.")
+              + '  <rect data-note=">" x="%s data-segment="Linux" data-column="A" '
+              'data-amount="300" y="%s" width="%s" height="228"/>\n' % (XA, TOP, WA)
+              + TAIL)
+    h.expect_detected("a data-segment swallowed by an unbalanced quote, behind a quoted `>`, "
+                      "still claims the file", broken, "example-anything.html")
+    h.expect_finding("a data-segment that no parsed element carries is a finding, never "
+                     "a skip", broken,
+                     r"declares data-segment but no complete <rect> could be parsed",
+                     name="example-anything.html")
+    quoted = document(columns(), CAPTIONS, KEYS, LABELS).replace(
+        "Marimekko fixture.", "Bar fixture.").replace(
+        "<rect data-column=", '<rect data-note=">" data-column=')
+    h.expect_detected("a live rect with a quoted `>` before its data-segment claims the file",
+                      quoted, "example-anything.html")
+    h.expect_clean("... and an honest one passes", quoted, name="example-anything.html")
+    h.expect_finding("... and a dishonest one is verified, not skipped",
+                     quoted.replace('width="%s" height="228.0"' % WA,
+                                    'width="%s" height="228.0"' % (WA + 150)),
+                     r"full width of its column", name="example-anything.html")
 
     # ── Scope treaty with the parent and the siblings ─────────────────────
     h.expect_out_of_scope(

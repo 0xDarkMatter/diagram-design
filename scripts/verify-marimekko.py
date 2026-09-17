@@ -49,8 +49,11 @@ Nine invariants, in the spirit of ADR 0005 and the treemap checker:
 9. UNPOSITIONED GEOMETRY and FAIL CLOSED - no transform may move verified
    geometry or a bound label, by any of the three carriers (the `transform`
    attribute, an inline `style`, a rule in a <style> block), on the element
-   or on an ancestor <g>/<svg>. A file that presents as a marimekko but yields
-   fewer than two parseable columns is a finding, never a pass.
+   or on an ancestor <g>/<svg>, and no CSS `width`/`height` may resize a
+   segment behind the attributes this checker measures. A file that presents
+   as a marimekko but yields fewer than two parseable columns is a finding,
+   never a pass, and so is one whose `data-segment` sits in markup too broken
+   for any <rect> to carry it.
 
 Markup is read through the stdlib html.parser.HTMLParser, never a regex, so a
 tag is recognized exactly when a browser would recognize it: a quoted `>`
@@ -60,7 +63,10 @@ upper-case names parse as their canonical form, and a comment's contents are
 never live markup. This follows verify-streamgraph.py and the fail-open shape
 verify-block-registry.py retired: a regex tag matcher stops at the first `>`
 it sees, so `<g data-note=">" transform="...">` hid its transform from the
-checker while Chromium applied it to everything inside.
+checker while Chromium applied it to everything inside. Scope detection is
+held to the same standard: `data-segment=` anywhere in the comment-stripped
+source is the claim, the parser confirms which element carries it, and a
+claim no parsed element carries is the fail-closed case.
 
 The basis for every geometric check is the `data-amount` each segment's <rect>
 declares, never the rendered text. A segment whose label is missing stays in
@@ -107,29 +113,46 @@ ASSET_DIR = ROOT / "skills/diagram-design/assets"
 # declaration start so `text-transform:` never matches and the `rotate` inside
 # `transform: rotate(45deg)` is read once as the property; a vendor prefix is
 # optional so `-webkit-transform:` is not a free pass. `width`/`height` are
-# also CSS geometry properties on a rect, but every shipped page sizes its
-# <svg> and its legend swatches with them in the stylesheet, so they are left
-# out here exactly as verify-beeswarm.py leaves them out - a named door, not
-# an unnoticed one.
+# in the set because SVG 2 makes them CSS geometry properties on a rect
+# (Chromium honours it): `rect { width: ... }` or `style="width: ..."` draws
+# a segment at a size the checked attributes never state. Every shipped page
+# sizes its <svg> and its legend swatches with them in the stylesheet, so a
+# <style> rule is only reported when its selector can reach a segment rect
+# (see selector_reaches_segment); an inline style on a segment or an
+# ancestor is reported outright. Comments are blanked before matching: the
+# boundary allows only whitespace, and a browser reads `/* */` as exactly
+# that, so `style="/**/transform: ..."` is a live transform.
 CSS_MOVES_MARK_RE = re.compile(
     r"(?:^|[{;}\n])\s*(?:-(?:webkit|moz|ms|o)-)?"
     r"(?P<prop>transform|translate|rotate|scale"
-    r"|x|y|cx|cy|r"
+    r"|x|y|cx|cy|r|width|height"
     r"|offset(?:-(?:path|distance|position|anchor|rotate))?)"
     r"\s*:",
     re.IGNORECASE,
 )
+# The size pair above is the only part of the set whose <style> reading is
+# gated on the selector; the rest is reported on any selector.
+CSS_SIZE_PROPS = ("width", "height")
+# A CSS comment, `/* ... */`, non-greedy so two comments in one declaration
+# block do not merge into one; blanked to whitespace, never removed, so the
+# line arithmetic in a finding stays right.
+CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+# An HTML comment. The parser already refuses to tokenize its contents; scope
+# detection reads raw text and must refuse the same way, or a commented-out
+# draft claims an unrelated file.
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 # The complete numeric token a label may print. Matching only the first
 # fragment is how "2,140" once agreed with metadata that said 2.
 NUMBER_RE = re.compile(
     r"[-+]?(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?"
 )
-# The scope key - checked against a <rect>'s RAW attribute text, so a rect
-# whose markup is too broken to parse is still claimed and the breakage is a
-# finding rather than a silent skip. Detection only; parsing never uses it.
-RECT_DECLARES_SEGMENT_RE = re.compile(
-    r"<rect\b[^>]*?\bdata-segment\s*=", re.IGNORECASE | re.DOTALL
-)
+# The scope key, read off the comment-stripped RAW source and not off a tag,
+# so a declaration inside markup too broken to parse is still a claim and the
+# breakage is a finding rather than a silent skip. Which element carries it
+# is the parser's call (see looks_like_marimekko), never a tag regex's: a
+# `<rect\b[^>]*?data-segment` pattern stops at a quoted `>` and misses the
+# live rect behind it. Detection only; parsing never uses it.
+DECLARES_SEGMENT_RE = re.compile(r"\bdata-segment\s*=", re.IGNORECASE)
 # The accent stroke on either skin, hex or rgba. The focal count keys on the
 # STROKE, as in verify-beeswarm.py: it is the mark's edge and the thing a
 # reader identifies the focal segment by.
@@ -270,6 +293,7 @@ class _Scanner(HTMLParser):
         self.texts: list = []
         self.named: list = []      # <title> and <desc>
         self.styles: list = []
+        self.segment_carriers = 0  # live elements of ANY tag that carry data-segment
         self.error = None
         self._groups: list = []    # (tag, how) per open <g>/<svg>
         self._open: list = []      # (tag, Element) per open body element
@@ -292,6 +316,11 @@ class _Scanner(HTMLParser):
         self._start(tag, first_wins(attrs), closes=True)
 
     def _start(self, tag, attrs, closes):
+        # Counted on every tag, before the scope filters below: the count is
+        # how scope detection tells a legitimate carrier that is simply not a
+        # <rect> (a legend key) from a claim no parsed element carries at all.
+        if "data-segment" in attrs:
+            self.segment_carriers += 1
         if tag in GROUP_TAGS:
             if not closes:
                 how = None
@@ -355,10 +384,88 @@ def transform_carrier(attrs: dict):
         return "transform=%r" % attrs["transform"]
     style = attrs.get("style")
     if style is not None:
-        found = CSS_MOVES_MARK_RE.search(style)
+        found = CSS_MOVES_MARK_RE.search(blank_css_comments(style))
         if found is not None:
             return "style=%r (the %s property)" % (style, found.group("prop").lower())
     return None
+
+
+def blank_css_comments(css: str) -> str:
+    """CSS with every `/* ... */` replaced by whitespace of the same line count.
+
+    A browser drops a comment before it tokenizes declarations, so a comment
+    is whitespace to it and must be whitespace to CSS_MOVES_MARK_RE, whose
+    boundary permits nothing else. Newlines inside the comment are kept so a
+    match offset still counts lines from the top of the <style> body.
+    """
+    return CSS_COMMENT_RE.sub(lambda found: " " + "\n" * found.group().count("\n"), css)
+
+
+def strip_html_comments(source: str) -> str:
+    return HTML_COMMENT_RE.sub(" ", source)
+
+
+def selector_reaches_segment(selector: str, segments: list) -> bool:
+    """Could this selector's subject be one of the segment rects? Coarse on purpose.
+
+    Not a selector engine. A `rect` type selector or a `*` anywhere in the
+    selector claims it; a subject that names any other element (`svg`, `text`,
+    `.legend span`) cannot be a rect and is passed; a subject made of classes,
+    ids and attributes alone (`.seg`, `[data-segment]`) reaches a segment when
+    some segment rect actually carries one of them. Anything this misreads it
+    misreads towards a finding, which is the direction a gate may err in.
+    """
+    for alternative in selector.split(","):
+        if re.search(r"\brect\b|\*", alternative, re.IGNORECASE):
+            return True
+        compounds = [part for part in re.split(r"[\s>+~]+", alternative.strip()) if part]
+        if not compounds:
+            continue
+        subject = re.sub(r"::?[\w-]+(?:\([^)]*\))?", "", compounds[-1])
+        if re.match(r"[A-Za-z]", subject):
+            continue
+        classes = set(re.findall(r"\.([\w-]+)", subject))
+        ids = set(re.findall(r"#([\w-]+)", subject))
+        names = {name.lower() for name in re.findall(r"\[\s*([\w-]+)", subject)}
+        for segment in segments:
+            attrs = segment.element.attrs
+            if (classes & set(attrs.get("class", "").split())
+                    or attrs.get("id") in ids
+                    or names & set(attrs)):
+                return True
+    return False
+
+
+def css_geometry_declaration(css: str, segments: list):
+    """The first declaration in a stylesheet that moves or resizes a verified mark.
+
+    Transform-family and x/y/cx/cy/r declarations are reported whatever their
+    selector, as before: nothing here can tell which marks they select. The
+    size pair is gated on the selector because every shipped page has an
+    honest `svg { width: 100% }` and `.card-dot { width: 7px }`, and a gate
+    that fires on every shipped page is switched off, not obeyed.
+    """
+    for found in CSS_MOVES_MARK_RE.finditer(css):
+        if found.group("prop").lower() not in CSS_SIZE_PROPS:
+            return found
+        start = found.start("prop")
+        opened = css.rfind("{", 0, start)
+        if opened < 0:
+            continue  # a declaration outside any rule is not CSS a browser applies
+        previous = max(css.rfind("}", 0, opened), css.rfind("{", 0, opened))
+        if selector_reaches_segment(css[previous + 1:opened], segments):
+            return found
+    return None
+
+
+def declares_segment_rect(doc: _Scanner) -> bool:
+    """Does any live <rect> carry data-segment? The parser's word on the scope key."""
+    return any("data-segment" in element.attrs for element in doc.rects)
+
+
+def raw_declares_segment(source: str) -> bool:
+    """Does data-segment= appear anywhere outside a comment? The raw claim."""
+    return DECLARES_SEGMENT_RE.search(strip_html_comments(source)) is not None
 
 
 def plain(body: str) -> str:
@@ -429,12 +536,23 @@ def looks_like_marimekko(path: Path, source: str) -> bool:
     data-series on <line>, bubble data-size and beeswarm data-value on
     <circle>, treemap data-share on <rect>. None of them reads data-segment,
     and this gate reads nothing of theirs.
+
+    The raw claim and the parsed carrier are read together. HTML comments are
+    stripped first, so a commented-out draft cannot claim a live file. Then
+    the parser says which element carries data-segment: a <rect> claims the
+    file; another element alone (a legend key on a bar chart) does not; and a
+    raw `data-segment=` that NO parsed element carries is markup the browser
+    tokenized differently from how it reads - claimed, so check_source can
+    fail it closed rather than let the breakage read as out of scope.
     """
     if path.name.startswith("example-marimekko"):
         return True
-    if RECT_DECLARES_SEGMENT_RE.search(source):
+    doc = parse_document(source)
+    if declares_segment_rect(doc):
         return True
-    described = named_text(parse_document(source))
+    if doc.segment_carriers == 0 and raw_declares_segment(source):
+        return True
+    described = named_text(doc)
     return "marimekko" in described or "mekko" in described or "mosaic chart" in described
 
 
@@ -556,14 +674,15 @@ def check_transforms(doc: _Scanner, segments: list, findings: list, name: str) -
             check_element(element, "a bound label (%s)" % plain(element.body)[:20])
 
     for element in doc.styles:
-        found = CSS_MOVES_MARK_RE.search(element.body)
+        css = blank_css_comments(element.body)
+        found = css_geometry_declaration(css, segments)
         if found:
             findings.append(
                 "%s:%d: a CSS `%s` declaration — this checker cannot tell which "
                 "marks it applies to, and one that positions verified geometry "
                 "invalidates every coordinate here. Remove it, or bake the offset "
                 "into the coordinates"
-                % (name, element.line + element.body.count("\n", 0, found.start()),
+                % (name, element.line + css.count("\n", 0, found.start()),
                    found.group("prop").lower())
             )
 
@@ -892,6 +1011,21 @@ def check_source(path: Path, raw: str) -> list:
             "%s: presents as a marimekko but could not be parsed as HTML (%s) — "
             "refusing to report OK on a file this checker could not read"
             % (path.name, doc.error)
+        )
+        return findings
+    if (not declares_segment_rect(doc) and doc.segment_carriers == 0
+            and raw_declares_segment(raw)):
+        # The raw source says data-segment=, the browser's tokenizer found no
+        # element carrying it: an unbalanced quote swallowed the attribute
+        # into a neighbour's value. The old regex gate skipped this shape
+        # whenever a quoted `>` preceded it; a claim the file cannot back is
+        # a finding, never a skip.
+        findings.append(
+            "%s: declares data-segment but no complete <rect> could be parsed — "
+            "the declaration sits inside markup the browser tokenizes differently "
+            "from how it reads (an unbalanced quote swallows every attribute after "
+            "it); fix the markup. Refusing to report OK on a file this checker "
+            "could not read" % path.name
         )
         return findings
     segments = parse_segments(doc, findings, path.name)
