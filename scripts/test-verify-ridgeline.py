@@ -650,6 +650,96 @@ def main() -> int:
             else:
                 print("OK: a broken attribute quote neither crashes nor passes")
 
+        # 17c. CSS comments are whitespace to the browser. `/**/transform:` is
+        #     a live declaration: the browser drops the comment before it
+        #     tokenizes, while a regex anchored to a declaration boundary
+        #     walked past it. Each carrier is held to that, and a comment that
+        #     merely mentions the property is not a declaration.
+        case(
+            failures, directory, "comment-inline-transform",
+            source.replace('<path data-ridge="checkout-api"',
+                           '<path style="/**/transform: translateY(8px)" '
+                           'data-ridge="checkout-api"', 1),
+            source, "(the transform property)",
+            "a comment-prefixed inline transform on a ridge outline",
+        )
+        case(
+            failures, directory, "comment-inline-label",
+            source.replace(NAME_LABEL, NAME_LABEL.replace(
+                "<text ", '<text style="/**/transform: translateY(56px)" ', 1), 1),
+            source, "(the transform property)",
+            "a comment-prefixed inline transform on a bound label",
+        )
+        case(
+            failures, directory, "comment-ancestor",
+            source.replace(FOCAL_PATH,
+                           '<g style="/**/transform: translateY(8px)">' + FOCAL_PATH
+                           + "</g>", 1),
+            source, "an ancestor <g>/<svg> style transform",
+            "a comment-prefixed inline transform on an ancestor group",
+        )
+        case(
+            failures, directory, "comment-css-transform",
+            source.replace("<style>",
+                           "<style>\n    svg path { /* lift */ transform: scaleY(1.1); }", 1),
+            source, "CSS `transform`",
+            "a <style> rule with a comment before the property",
+        )
+        accept(
+            failures, directory, "comment-mentions-transform",
+            source.replace("<style>",
+                           "<style>\n    /* legacy rule;\n       transform: none */", 1),
+            source, "a <style> comment that merely mentions transform:",
+        )
+
+        # 17d. Scope is read from the raw text as well as through the parser.
+        #     An unclosed quote turns the whole tag into character data for
+        #     HTMLParser, so a file whose ONLY ridgeline signal is that tag
+        #     emitted no <path> and was skipped as out of scope - a fail-open.
+        #     The raw text (HTML comments removed) claims it and the lost tag
+        #     is reported; a commented-out declaration claims nothing. Neither
+        #     the filename nor the description names the family here.
+        broken_only = ("<html><head><title>weekly figure</title></head><body>"
+                       "<svg><title>figure</title><desc>latency by service</desc>"
+                       "<path data-ridge='a' data-baseline='100' "
+                       "data-bins=\"0,1,0 d='M0 0'/></svg></body></html>")
+        code, output = run(write(directory, "figure.html", broken_only))
+        if code == 0:
+            failures.append("a broken-quoted <path data-bins> as the file's only "
+                            "signal was skipped or accepted: %s" % output.strip())
+        elif "no complete <path> could be parsed" not in output:
+            failures.append("a broken-quoted <path data-bins> was reported without "
+                            "naming the lost tag: %s" % output.strip())
+        else:
+            print("OK: a broken-quoted <path data-bins> that is the file's only "
+                  "signal is reported, not skipped")
+
+        commented_only = broken_only.replace(
+            "<path data-ridge='a' data-baseline='100' data-bins=\"0,1,0 d='M0 0'/>",
+            "<!-- <path data-ridge='a' data-baseline='100' data-bins='0,1,0' "
+            "d='M0 0'/> -->", 1)
+        code, output = run(write(directory, "figure.html", commented_only))
+        if code != 0 or "no ridgeline found" not in output:
+            failures.append("a commented-out <path data-bins> as the file's only "
+                            "signal was claimed: %s" % output.strip())
+        else:
+            print("OK: a commented-out <path data-bins> as the file's only signal "
+                  "is out of scope")
+
+        plain_synthetic = (synthetic(5, 13)
+                           .replace("synthetic ridgeline", "synthetic figure")
+                           .replace("ridgeline fixture", "latency fixture"))
+        case(
+            failures, directory, "quoted-gt-claimed",
+            plain_synthetic.replace(
+                '<path data-ridge="r0" data-baseline="100" data-bins="0,12,9,6,3,',
+                '<path data-note=">" data-ridge="r0" data-baseline="100" '
+                'data-bins="0,12,9,8,3,', 1),
+            plain_synthetic, "one amplitude",
+            "a live <path data-bins> behind a quoted > in a file that names the "
+            "family nowhere else",
+        )
+
         # 18. Fail closed on a file that claims the type and yields nothing.
         empty = ("<html><head><title>weekly ridgeline</title></head>"
                  "<body><svg><title>ridgeline of nothing</title></svg></body></html>")

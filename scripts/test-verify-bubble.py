@@ -631,6 +631,89 @@ def run_cases(h: Harness) -> int:
         r".",
     )
 
+    # ── CSS comments are whitespace to the browser ────────────────────────
+    # `/**/transform:` is a live declaration: the browser drops the comment
+    # before it tokenizes, while a regex anchored to a declaration boundary
+    # walked past it. Each carrier is held to that, and a comment that merely
+    # mentions the property is not a declaration - both polarities.
+    h.expect_finding(
+        "a comment-prefixed inline transform on a bubble is reported",
+        document(honest_block(),
+                 bubble("Slid", 250, 2.5, 300,
+                        extra='style="/**/transform: translateX(80px)"'), TICKS),
+        r"bubble 'Slid' carries style=.*\(the transform property\)",
+    )
+    h.expect_finding(
+        "a comment-prefixed inline transform on a bound label is reported",
+        document(honest_block(), TICKS,
+                 label("Edge", cx(100), cy(1.0) - 34,
+                       extra='style="/**/transform: translateX(80px)"')),
+        r"bound label .* carries style=.*\(the transform property\)",
+    )
+    h.expect_finding(
+        "a comment-prefixed inline transform on an ancestor <g> is reported",
+        document('  <g style="/**/transform: translateX(80px)">\n', honest_block(),
+                 "  </g>\n", TICKS),
+        r"carries an ancestor <g>/<svg> style transform",
+    )
+    h.expect_finding(
+        "a <style> rule with a comment before the property is reported",
+        "<style>circle { /* nudge */ transform: translate(0, 40px); }</style>"
+        + document(honest_block(), TICKS),
+        r"a CSS `transform` declaration",
+    )
+    # The <style> opens on line 1 and the declaration sits on line 3 behind a
+    # two-line comment. The finding must say 3: a comment stripped to nothing
+    # would shift every later line up.
+    h.expect_finding(
+        "a <style> declaration behind a multi-line comment is reported on its own line",
+        "<style>/* header\n   comment */\ncircle { transform: translate(0, 40px); }"
+        "</style>" + document(honest_block(), TICKS),
+        r":3: a CSS `transform` declaration",
+    )
+    h.expect_clean(
+        "a <style> comment that merely mentions transform: is not read as a declaration",
+        "<style>/* no transforms here;\n   transform: none was the old rule */\n"
+        ".bubble { stroke: none; }</style>" + document(honest_block(), TICKS),
+    )
+    h.expect_clean(
+        "an inline style comment that merely mentions transform: is not read as a declaration",
+        document(honest_block(), TICKS,
+                 label("Edge", cx(100), cy(1.0) - 34,
+                       extra='style="stroke: none; /* was:\n transform: none */"')),
+    )
+
+    # ── Scope is read from the raw text as well as through the parser ────
+    # An unclosed quote turns the whole tag into character data for
+    # HTMLParser, so a file whose ONLY bubble signal is that tag emitted no
+    # <circle> and was skipped as out of scope - a fail-open. The raw text
+    # (HTML comments removed) claims it and the lost tag is reported. Neither
+    # the filename nor the description names the family in any of these.
+    plain_head = HEAD.replace("Bubble chart fixture.", "Services fixture.")
+    h.expect_finding(
+        "a broken-quoted <circle data-size> that is the file's only signal is "
+        "reported, not skipped",
+        plain_head + TICKS
+        + "  <circle data-name='A' data-x='1' data-y='2' data-size=\"9 cx='81.8' "
+          "cy='230' r='4.2'/>\n" + TAIL,
+        r"declares data-size but no complete <circle> could be parsed",
+        name="fixture.html",
+    )
+    h.expect_out_of_scope(
+        "a commented-out <circle data-size> as the file's only signal is out of scope",
+        plain_head + TICKS + "  <!-- %s -->\n" % bubble("Ghost", 100, 1.0, 400).strip()
+        + TAIL,
+        "fixture.html",
+    )
+    h.expect_finding(
+        "a live <circle data-size> behind a quoted > is still claimed and checked",
+        plain_head + peers
+        + stream_nudged.replace("  <circle ", '  <circle data-note=">" ', 1)
+        + TICKS + TAIL,
+        r"bubble 'Stream' declares x=150 .* never nudge",
+        name="fixture.html",
+    )
+
     # ── Fail closed ───────────────────────────────────────────────────────
     h.expect_finding(
         "three bubbles are too few for leave-one-out — refused, not passed",

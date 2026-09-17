@@ -64,6 +64,13 @@ reaches the renderer by three carriers: the `transform` attribute, an inline
 element and on any ancestor <g>/<svg>, following verify-beeswarm.py; the
 property set in CSS_MOVES_MARK_RE is the invariant, covering what moves or
 resizes a circle (`cx`/`cy`/`r`) and what moves a label or tick (`x`/`y`).
+CSS comments are stripped before any carrier is read, as the browser strips
+them: `/**/transform:` is a live declaration, not a quirk.
+
+Scope is read from the raw text with HTML comments removed, BEFORE the parser,
+so a <circle> whose broken quoting keeps the parser from emitting it still
+claims the file and is reported rather than skipped - the parser is exactly
+what an unclosed quote defeats.
 
 The basis for geometry is the `data-x` / `data-y` / `data-size` triple each
 bubble circle declares, never the rendered text. The scales are derived from
@@ -140,9 +147,18 @@ NUMBER_RE = re.compile(
     r"[-+]?(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?"
 )
 DIGIT_RE = re.compile(r"\d")
-# Detection only - deliberately a text search over the raw bytes, so a file
-# that so much as mentions the binding is held to the contract.
+# A CSS comment is whitespace to the browser, so `/**/transform:` is a live
+# declaration. CSS_MOVES_MARK_RE allows only whitespace between a declaration
+# boundary and the property name, which let a comment sitting there hide the
+# property from it while Chromium applied it. Non-greedy and DOTALL: a comment
+# spans lines, and a stylesheet holds many. See css_moves_mark.
+CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+# Detection only - deliberately a text search over the raw bytes, HTML comments
+# removed, so a file that so much as mentions the binding in live markup is
+# held to the contract even when the parser cannot read the tag that binds it.
+# See declares_bubble.
 DECLARES_BUBBLE_RE = re.compile(r"\bdata-size\s*=", re.IGNORECASE)
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 # The accent stroke on either skin, hex or rgba. The focal count keys on the
 # STROKE because the fill is a translucent tint the paper shows through; the
@@ -341,10 +357,42 @@ def transform_carrier(attrs: dict):
         return "transform=%r" % attrs["transform"]
     style = attrs.get("style")
     if style is not None:
-        found = CSS_MOVES_MARK_RE.search(style)
+        found = css_moves_mark(style)
         if found is not None:
             return "style=%r (the %s property)" % (style, found.group("prop").lower())
     return None
+
+
+def css_moves_mark(css: str):
+    """The first mark-moving declaration in CSS text, read past comments, or None.
+
+    Every carrier goes through here - an inline style, an ancestor's inline
+    style, a <style> block - because the browser drops `/* ... */` before it
+    tokenizes, and CSS_MOVES_MARK_RE must see what the browser sees:
+    `style="/**/transform: translateX(80px)"` moved a bubble while the
+    anchored regex walked past the comment. Each comment is blanked to
+    whitespace of the SAME length, newlines kept, so the searched text is
+    aligned with the original character for character: every offset in the
+    returned match is an offset into `css` as written, and a <style> finding
+    that counts newlines up to the property names the right line.
+    """
+    stripped = CSS_COMMENT_RE.sub(
+        lambda found: re.sub(r"[^\n]", " ", found.group()), css)
+    return CSS_MOVES_MARK_RE.search(stripped)
+
+
+def declares_bubble(source: str) -> bool:
+    """Does the raw text, HTML comments removed, declare data-size anywhere?
+
+    Read BEFORE the parser, because the parser is exactly what a broken quote
+    defeats: `<circle data-size="9` with no closing quote is character data
+    to HTMLParser, no <circle> is ever emitted, and a file whose only bubble
+    signal was that tag would otherwise be skipped as out of scope - a
+    fail-open. The raw signal claims the file and check_source then reports
+    the tag the parser could not read. Comments are stripped first so a
+    commented-out draft bubble does not claim an unrelated file.
+    """
+    return DECLARES_BUBBLE_RE.search(HTML_COMMENT_RE.sub("", source)) is not None
 
 
 def plain(body: str) -> str:
@@ -451,11 +499,12 @@ def looks_like_bubble(path: Path, source: str) -> bool:
     that claims it while declaring nothing parseable is the fail-closed case,
     not a pass. Scoped to bubble-specific signals only: `data-size` rather
     than `data-series`, so this checker and `verify-slopegraph.py` never claim
-    one another's files.
+    one another's files. A declaration inside an HTML comment is not live
+    markup and claims nothing.
     """
     if path.name.startswith("example-bubble"):
         return True
-    if DECLARES_BUBBLE_RE.search(source):
+    if declares_bubble(source):
         return True
     described = named_text(parse_document(source))
     return "bubble chart" in described or "bubble plot" in described
@@ -557,7 +606,7 @@ def check_transforms(doc: _Scanner, findings: list, name: str) -> None:
             check_element(element, "a bound label (%s)" % plain(element.body)[:20])
 
     for element in doc.styles:
-        found = CSS_MOVES_MARK_RE.search(element.body)
+        found = css_moves_mark(element.body)
         if found:
             findings.append(
                 "%s:%d: a CSS `%s` declaration — this checker cannot tell "
@@ -825,6 +874,18 @@ def check_source(path: Path, raw: str) -> list:
             "%s: presents as a bubble chart but could not be parsed as HTML (%s) — "
             "refusing to report OK on a file this checker could not read"
             % (path.name, doc.error)
+        )
+        return findings
+    # The raw text claimed a bound <circle> the parser never emitted: an
+    # unclosed quote turned the tag into character data. Nothing downstream
+    # can verify a mark that does not exist, so say which tag was lost rather
+    # than count zero bubbles and leave the author hunting for a circle that
+    # is plainly there.
+    if declares_bubble(raw) and not any("data-size" in e.attrs for e in doc.circles):
+        findings.append(
+            "%s: declares data-size but no complete <circle> could be parsed — an "
+            "unclosed attribute quote swallows the tag; fix the markup. Refusing "
+            "to report OK on a file this checker could not read" % path.name
         )
         return findings
     bubbles = parse_bubbles(doc, findings, path.name)

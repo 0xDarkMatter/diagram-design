@@ -804,6 +804,110 @@ def run_cases(h: Harness) -> int:
         r".",
     )
 
+    # ── 8. CSS comments are whitespace to the browser ─────────────────────
+    # `/**/transform:` is a live declaration: the browser drops the comment
+    # before it tokenizes, while a regex anchored to a declaration boundary
+    # walked past it. Each carrier is held to that, and a comment that merely
+    # mentions the property is not a declaration - both polarities.
+    h.expect_finding(
+        "a comment-prefixed inline transform on a series line is reported",
+        document(search_line.replace(
+            "  <line ", '  <line style="/**/transform: translateX(80px)" ', 1)
+            + labels("Search", 512, 208) + others),
+        r"series 'Search' carries style=.*\(the transform property\)",
+    )
+
+    h.expect_finding(
+        "a comment-prefixed inline transform on a bound label is reported",
+        document(honest_rows_block()).replace(
+            '  <text data-series="Search" data-end="from"',
+            '  <text style="/**/transform: translateX(80px)" data-series="Search" '
+            'data-end="from"', 1),
+        r"bound label .* carries style=.*\(the transform property\)",
+    )
+
+    h.expect_finding(
+        "a comment-prefixed inline transform on an ancestor <g> is reported",
+        document('  <g style="/**/transform: translateX(80px)">\n'
+                 + honest_rows_block() + "  </g>\n"),
+        r"carries an ancestor <g>/<svg> style transform",
+    )
+
+    h.expect_finding(
+        "a <style> rule with a comment before the property is reported",
+        HEAD + "<style>line { /* nudge */ transform: translateY(40px); }</style>\n"
+        + CAPTIONS + honest_rows_block() + TAIL,
+        r"a CSS `transform` declaration",
+    )
+
+    # HEAD is six lines, so the <style> opens on line 7 and the declaration
+    # sits on line 9 behind a two-line comment. The finding must say 9: a
+    # comment stripped to nothing would shift every later line up.
+    h.expect_finding(
+        "a <style> declaration behind a multi-line comment is reported on its own line",
+        HEAD + "<style>/* header\n   comment */\nline { transform: translateY(40px); }"
+        "</style>\n" + CAPTIONS + honest_rows_block() + TAIL,
+        r":9: a CSS `transform` declaration",
+    )
+
+    h.expect_clean(
+        "a <style> comment that merely mentions transform: is not read as a declaration",
+        HEAD + "<style>/* no transforms here;\n   transform: none was the old rule */\n"
+        "line { stroke: #2d3142; }</style>\n" + CAPTIONS + honest_rows_block() + TAIL,
+    )
+
+    h.expect_clean(
+        "an inline style comment that merely mentions transform: is not read as a declaration",
+        document(honest_rows_block()).replace(
+            '  <text data-series="Search" data-end="from"',
+            '  <text style="stroke: none; /* was:\n transform: none */" '
+            'data-series="Search" data-end="from"', 1),
+    )
+
+    # ── 9. Scope is read from the raw text as well as through the parser ──
+    # An unclosed quote turns the whole tag into character data for
+    # HTMLParser, so a file whose ONLY slopegraph signal is that tag emitted
+    # no <line> and was skipped as out of scope - a fail-open. The raw text
+    # (HTML comments removed) claims it and the lost tag is reported. Neither
+    # the filename nor the description names the family in any of these.
+    plain_head = HEAD.replace("Slopegraph fixture.", "Latency fixture.")
+
+    h.expect_finding(
+        "a broken-quoted <line data-series> that is the file's only signal is "
+        "reported, not skipped",
+        plain_head + CAPTIONS
+        + '  <line data-series="Search data-from=512 data-to=208 x1=320 y1=72.1 '
+          "x2=680 y2=328.8/>\n" + TAIL,
+        r"declares data-series on a <line> but no complete <line> could be parsed",
+        name="figure.html",
+    )
+
+    h.expect_out_of_scope(
+        "a commented-out <line data-series> as the file's only signal is out of scope",
+        plain_head + CAPTIONS
+        + '  <!-- <line data-series="ghost" data-from="1" data-to="2" x1="320" '
+          'y1="10" x2="680" y2="410"/> -->\n' + TAIL,
+        "figure.html",
+    )
+
+    h.expect_finding(
+        "a live <line data-series> behind a quoted > is still claimed and checked",
+        plain_head + CAPTIONS
+        + search_nudged.replace("  <line ", '  <line data-note=">" ', 1)
+        + labels("Search", 512, 208) + others + TAIL,
+        r"series 'Search' draws its to endpoint.*off by 3\.0 px",
+        name="figure.html",
+    )
+
+    h.expect_out_of_scope(
+        "data-series on a <path> alone (the bump chart's binding) is not claimed "
+        "by the raw signal",
+        plain_head + '  <line x1="320" y1="40" x2="320" y2="420" stroke="#2d3142"/>\n'
+        '  <path data-series="legacy-http" data-ranks="1,2" d="M320 40 L680 80"/>\n'
+        + TAIL,
+        "figure.html",
+    )
+
     # ── The fixture-isolation fix, held in place ──────────────────────────
     sentinel = ROOT / "example-slopegraph-fixture.html"
     existed = sentinel.exists()

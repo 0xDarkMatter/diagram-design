@@ -68,6 +68,13 @@ reaches the renderer by three carriers: the `transform` attribute, an inline
 element and on any ancestor <g>/<svg>, following verify-beeswarm.py; the
 property set in CSS_MOVES_MARK_RE is the invariant, adapted to what moves an
 outline (`d`), a baseline rule (`x1`/`y1`/`x2`/`y2`) and a label (`x`/`y`).
+CSS comments are stripped before any carrier is read, as the browser strips
+them: `/**/transform:` is a live declaration, not a quirk.
+
+Scope is read from the raw text with HTML comments removed, BEFORE the parser,
+so a <path> whose broken quoting keeps the parser from emitting it still claims
+the file and is reported rather than skipped - the parser is exactly what an
+unclosed quote defeats.
 
 WHAT THIS DOES NOT CHECK, deliberately:
 
@@ -134,9 +141,18 @@ CSS_MOVES_MARK_RE = re.compile(
     r"\s*:",
     re.IGNORECASE,
 )
-# Detection only - deliberately a text search over the raw bytes, so a file
-# that so much as mentions the binding is held to the contract.
+# A CSS comment is whitespace to the browser, so `/**/transform:` is a live
+# declaration. CSS_MOVES_MARK_RE allows only whitespace between a declaration
+# boundary and the property name, which let a comment sitting there hide the
+# property from it while Chromium applied it. Non-greedy and DOTALL: a comment
+# spans lines, and a stylesheet holds many. See css_moves_mark.
+CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+# Detection only - deliberately a text search over the raw bytes, HTML comments
+# removed, so a file that so much as mentions the binding in live markup is
+# held to the contract even when the parser cannot read the tag that binds it.
+# See declares_bins.
 DECLARES_BINS_RE = re.compile(r"\bdata-bins\s*=", re.IGNORECASE)
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 NUM_RE = re.compile(r"[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?")
 # Path-data tokens, number branch FIRST so an exponent's `e` is consumed as part
 # of its number instead of being read as a command. See parse_d.
@@ -349,10 +365,42 @@ def transform_carrier(attrs: dict):
         return "transform=%r" % attrs["transform"]
     style = attrs.get("style")
     if style is not None:
-        found = CSS_MOVES_MARK_RE.search(style)
+        found = css_moves_mark(style)
         if found is not None:
             return "style=%r (the %s property)" % (style, found.group("prop").lower())
     return None
+
+
+def css_moves_mark(css: str):
+    """The first mark-moving declaration in CSS text, read past comments, or None.
+
+    Every carrier goes through here - an inline style, an ancestor's inline
+    style, a <style> block - because the browser drops `/* ... */` before it
+    tokenizes, and CSS_MOVES_MARK_RE must see what the browser sees:
+    `style="/**/transform: translateY(8px)"` moved a ridge while the anchored
+    regex walked past the comment. Each comment is blanked to whitespace of
+    the SAME length, newlines kept, so the searched text is aligned with the
+    original character for character: every offset in the returned match is
+    an offset into `css` as written, and a <style> finding that counts
+    newlines up to the property names the right line.
+    """
+    stripped = CSS_COMMENT_RE.sub(
+        lambda found: re.sub(r"[^\n]", " ", found.group()), css)
+    return CSS_MOVES_MARK_RE.search(stripped)
+
+
+def declares_bins(source: str) -> bool:
+    """Does the raw text, HTML comments removed, declare data-bins anywhere?
+
+    Read BEFORE the parser, because the parser is exactly what a broken quote
+    defeats: `<path data-bins="0,1` with no closing quote is character data
+    to HTMLParser, no <path> is ever emitted, and a file whose only ridgeline
+    signal was that tag would otherwise be skipped as out of scope - a
+    fail-open. The raw signal claims the file and check_source then reports
+    the tag the parser could not read. Comments are stripped first so a
+    commented-out draft path does not claim an unrelated file.
+    """
+    return DECLARES_BINS_RE.search(HTML_COMMENT_RE.sub("", source)) is not None
 
 
 def number(value):
@@ -387,12 +435,14 @@ def looks_like_ridgeline(path: Path, source: str) -> bool:
     """Does this file present itself as a ridgeline?
 
     Generous on the vocabulary this contract binds: `data-bins` belongs to no
-    other chart in this repo, so any file declaring it is held to the contract
-    even if nothing else parses - that combination is the fail-closed case.
+    other chart in this repo, so any file declaring it in live markup is held
+    to the contract even if nothing else parses - that combination is the
+    fail-closed case. A declaration inside an HTML comment is not live markup
+    and claims nothing.
     """
     if path.name.startswith("example-ridgeline"):
         return True
-    if DECLARES_BINS_RE.search(source):
+    if declares_bins(source):
         return True
     described = named_text(parse_document(source))
     return any(word in described for word in ("ridgeline", "ridge line", "joyplot"))
@@ -594,7 +644,7 @@ def check_transforms(doc: _Scanner, findings: list, name: str) -> None:
             check_element(element, "a bound label (%s)" % plain(element.body)[:20])
 
     for element in doc.styles:
-        found = CSS_MOVES_MARK_RE.search(element.body)
+        found = css_moves_mark(element.body)
         if found:
             findings.append(
                 "%s:%d: a CSS `%s` declaration — this checker cannot tell "
@@ -1031,6 +1081,17 @@ def check_source(path: Path, raw: str) -> list:
             "%s: presents as a ridgeline but could not be parsed as HTML (%s) — "
             "refusing to report OK on a file this checker could not read"
             % (path.name, doc.error)
+        )
+        return findings
+    # The raw text claimed a bound <path> the parser never emitted: an unclosed
+    # quote turned the tag into character data. Nothing downstream can verify
+    # an outline that does not exist, so say which tag was lost rather than
+    # count zero ridges and leave the author hunting for a path plainly there.
+    if declares_bins(raw) and not any("data-bins" in e.attrs for e in doc.paths):
+        findings.append(
+            "%s: declares data-bins but no complete <path> could be parsed — an "
+            "unclosed attribute quote swallows the tag; fix the markup. Refusing "
+            "to report OK on a file this checker could not read" % path.name
         )
         return findings
     ridges = parse_ridges(doc, findings, path.name)

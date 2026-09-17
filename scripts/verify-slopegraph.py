@@ -30,7 +30,9 @@ Six invariants, each of which has shipped broken in a draft of this type:
    block - and all three are refused, on the element and on any ancestor
    <g>/<svg>, following verify-beeswarm.py. Transforms are rejected rather than
    resolved: a partial implementation of the SVG transform stack is worse than
-   an honest refusal, because it looks like coverage.
+   an honest refusal, because it looks like coverage. CSS comments are stripped
+   before any carrier is read, as the browser strips them: `/**/transform:` is
+   a live declaration, not a quirk.
 
 4. COMPLETE PRINTED VALUES - the whole visible numeric token must match the
    declared one. Matching only the first fragment read the label "512,000" as
@@ -45,7 +47,9 @@ Six invariants, each of which has shipped broken in a draft of this type:
    parseable is a finding, never a pass. A checker that reports OK because it
    found nothing to compare is the bug, not the gate. `verify-treemap.py`
    returned early on `len(cells) < 3` and that is precisely how an undersized
-   cell went unverified.
+   cell went unverified. Scope is therefore read twice - from the raw text,
+   HTML comments removed, and through the parser - so a <line> whose broken
+   quoting the parser cannot emit still claims the file and is reported.
 
 Markup is read through the stdlib html.parser.HTMLParser, never a regex, so a
 tag is recognized exactly when a browser would recognize it: a quoted `>`
@@ -127,6 +131,17 @@ CSS_MOVES_MARK_RE = re.compile(
     r"\s*:",
     re.IGNORECASE,
 )
+# A CSS comment is whitespace to the browser, so `/**/transform:` is a live
+# declaration. CSS_MOVES_MARK_RE allows only whitespace between a declaration
+# boundary and the property name, which let a comment sitting there hide the
+# property from it while Chromium applied it. Non-greedy and DOTALL: a comment
+# spans lines, and a stylesheet holds many. See css_moves_mark.
+CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+# Detection only - a raw-text signal read BEFORE the parser, because the parser
+# is exactly what a broken quote defeats (see declares_series). Scoped to a
+# <line> start tag: `data-series` on a <path> is the bump chart's vocabulary.
+DECLARES_SERIES_RE = re.compile(r"<line\b[^>]*\bdata-series\s*=", re.IGNORECASE)
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 # The COMPLETE numeric token an author may print: sign, comma-grouped thousands,
 # decimals, leading-dot decimals, exponents. Matching only `-?\d+(\.\d+)?` read
 # "1e3" as 1 and "512,000" as 512, so a mangled label agreed with its metadata.
@@ -333,10 +348,42 @@ def transform_carrier(attrs: dict):
         return "transform=%r" % attrs["transform"]
     style = attrs.get("style")
     if style is not None:
-        found = CSS_MOVES_MARK_RE.search(style)
+        found = css_moves_mark(style)
         if found is not None:
             return "style=%r (the %s property)" % (style, found.group("prop").lower())
     return None
+
+
+def css_moves_mark(css: str):
+    """The first mark-moving declaration in CSS text, read past comments, or None.
+
+    Every carrier goes through here - an inline style, an ancestor's inline
+    style, a <style> block - because the browser drops `/* ... */` before it
+    tokenizes, and CSS_MOVES_MARK_RE must see what the browser sees:
+    `style="/**/transform: translateX(80px)"` moved a mark while the anchored
+    regex walked past the comment. Each comment is blanked to whitespace of
+    the SAME length, newlines kept, so the searched text is aligned with the
+    original character for character: every offset in the returned match is
+    an offset into `css` as written, and a <style> finding that counts
+    newlines up to the property names the right line.
+    """
+    stripped = CSS_COMMENT_RE.sub(
+        lambda found: re.sub(r"[^\n]", " ", found.group()), css)
+    return CSS_MOVES_MARK_RE.search(stripped)
+
+
+def declares_series(source: str) -> bool:
+    """Does the raw text, HTML comments removed, put data-series on a <line>?
+
+    Read BEFORE the parser, because the parser is exactly what a broken quote
+    defeats: `<line data-series="Search` with no closing quote is character
+    data to HTMLParser, no <line> is ever emitted, and a file whose only
+    slopegraph signal was that tag would be skipped as out of scope - a
+    fail-open. The raw signal claims the file and check_source then reports
+    the tag the parser could not read. Comments are stripped first so a
+    commented-out draft line does not claim an unrelated file.
+    """
+    return DECLARES_SERIES_RE.search(HTML_COMMENT_RE.sub("", source)) is not None
 
 
 def plain(body: str) -> str:
@@ -450,11 +497,15 @@ def looks_like_slopegraph(path: Path, source: str) -> bool:
     Detection is scoped to the ELEMENT this contract binds. `data-series` alone
     is shared vocabulary across the chart variants - a bump chart binds it to
     <path>, and holding that file to the slopegraph contract rejects a figure
-    for lacking <line> elements it never claimed to have. Read through the
-    parser, so a <line> that declares data-series behind a quoted `>` is still
-    claimed, as the browser still draws it.
+    for lacking <line> elements it never claimed to have. Two readings, each
+    covering the other's blind spot: the raw text (comments stripped) claims a
+    <line> whose broken quoting keeps the parser from ever emitting it, and
+    the parser claims a <line> that declares data-series behind a quoted `>`,
+    which the raw scan cannot see past but the browser still draws.
     """
     if path.name.startswith("example-slopegraph"):
+        return True
+    if declares_series(source):
         return True
     doc = parse_document(source)
     if any("data-series" in element.attrs for element in doc.lines):
@@ -535,7 +586,7 @@ def check_transforms(doc: _Scanner, findings: list, name: str) -> None:
             check_element(element, "a bound label (%s)" % plain(element.body)[:20])
 
     for element in doc.styles:
-        found = CSS_MOVES_MARK_RE.search(element.body)
+        found = css_moves_mark(element.body)
         if found:
             findings.append(
                 "%s:%d: a CSS `%s` declaration — this checker cannot tell "
@@ -825,6 +876,17 @@ def check_source(path: Path, raw: str) -> list:
             "%s: presents as a slopegraph but could not be parsed as HTML (%s) — "
             "refusing to report OK on a file this checker could not read"
             % (path.name, doc.error)
+        )
+        return findings
+    # The raw text claimed a bound <line> the parser never emitted: an unclosed
+    # quote turned the tag into character data. Nothing downstream can verify
+    # a mark that does not exist, so say which tag was lost rather than count
+    # zero series and leave the author hunting for a line that is plainly there.
+    if declares_series(raw) and not any("data-series" in e.attrs for e in doc.lines):
+        findings.append(
+            "%s: declares data-series on a <line> but no complete <line> could be "
+            "parsed — an unclosed attribute quote swallows the tag; fix the markup. "
+            "Refusing to report OK on a file this checker could not read" % path.name
         )
         return findings
     series = parse_series(doc, findings, path.name)
