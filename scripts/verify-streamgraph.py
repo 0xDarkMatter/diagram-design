@@ -64,7 +64,9 @@ reaches the renderer by three carriers: the `transform` attribute, an inline
 `style="..."`, and a rule in a <style> block. All three are refused, on the
 element and on any ancestor <g>/<svg>, following verify-beeswarm.py; the
 property set in CSS_MOVES_MARK_RE is the invariant, adapted to what moves a
-path (`d`) and a label (`x`/`y`) rather than a circle.
+path (`d`) and a label (`x`/`y`) rather than a circle. CSS text is read the
+way the CSS tokenizer reads it: a `/* */` comment is whitespace, so
+`style="/**/transform: ..."` is the transform property, not a free pass.
 
 The basis for geometry is the `data-values` list each layer's path declares,
 never the rendered text. A layer whose legend entry is missing stays in the
@@ -131,14 +133,28 @@ CSS_MOVES_MARK_RE = re.compile(
     r"\s*:",
     re.IGNORECASE,
 )
+# CSS Syntax Level 3 section 4.3.2: a `/* ... */` comment is consumed as if
+# it were whitespace, so the tokenizer sees `/**/transform:` as the transform
+# property at a declaration start. CSS_MOVES_MARK_RE allows only whitespace
+# between the boundary and the name, so the comment must be turned into the
+# whitespace it is BEFORE the regex runs, or a comment is a free pass
+# through the guard. Non-greedy and DOTALL: a comment may span lines and
+# the first `*/` ends it, as in the tokenizer.
+CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+# Detection reads raw text, and a commented-out tag is not in the document
+# a browser builds - stripped before the raw signal is consulted so an old
+# draft in a comment cannot claim an unrelated file for this checker.
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 # The complete numeric token a legend may print. Matching only the first
 # fragment is how "512,000" once agreed with metadata that said 512.
 NUMBER_RE = re.compile(
     r"[-+]?(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?"
 )
 DIGIT_RE = re.compile(r"\d")
-# Detection only - deliberately a text search over the raw bytes, so a file
-# that so much as mentions a layer binding is held to the contract.
+# Detection only - deliberately a text search over the raw text (HTML
+# comments removed), so a file that so much as mentions a layer binding in
+# live markup is held to the contract even when the parser finds no complete
+# layer - that is check_source's fail-closed case, not a skip.
 DECLARES_LAYER_RE = re.compile(r"\bdata-layer\s*=", re.IGNORECASE)
 # Path grammar: absolute M/C/L/Z and numbers only. Relative commands, arcs,
 # shorthand curves and H/V would need a transform stack this checker refuses
@@ -320,6 +336,18 @@ def attrs_of(raw: str) -> dict:
     return scanner.attrs
 
 
+def strip_css_comments(text: str) -> str:
+    """CSS text with every `/* ... */` replaced by the whitespace it is.
+
+    Each comment becomes one space plus the newlines it contained, so the
+    result tokenizes as the browser tokenizes the original AND keeps every
+    line number where it was: the <style> finding reports the line of the
+    declaration by counting newlines up to the match, and a comment that
+    swallowed its newlines would shift that line.
+    """
+    return CSS_COMMENT_RE.sub(lambda found: " " + "\n" * found.group().count("\n"), text)
+
+
 def transform_carrier(attrs: dict):
     """How this element carries a transform, phrased for the finding, or None.
 
@@ -334,7 +362,7 @@ def transform_carrier(attrs: dict):
         return "transform=%r" % attrs["transform"]
     style = attrs.get("style")
     if style is not None:
-        found = CSS_MOVES_MARK_RE.search(style)
+        found = CSS_MOVES_MARK_RE.search(strip_css_comments(style))
         if found is not None:
             return "style=%r (the %s property)" % (style, found.group("prop").lower())
     return None
@@ -387,11 +415,14 @@ def looks_like_streamgraph(path: Path, source: str) -> bool:
     Deliberately generous, and searched whole-document: anything that claims
     the type in its name, its accessible description, or its markup is held to
     the contract even if it declares nothing parseable - that combination is
-    the fail-closed case, not a pass.
+    the fail-closed case, not a pass. HTML comments are not markup, so a
+    commented-out draft of a layer cannot pull another example type into
+    scope; a mangled tag whose bytes still say `data-layer=` can, and then
+    the parser finding no complete layer is exactly what is reported.
     """
     if path.name.startswith("example-streamgraph"):
         return True
-    if DECLARES_LAYER_RE.search(source):
+    if DECLARES_LAYER_RE.search(HTML_COMMENT_RE.sub(" ", source)):
         return True
     described = named_text(parse_document(source))
     return "streamgraph" in described or "stream graph" in described
@@ -586,14 +617,18 @@ def check_transforms(doc: _Scanner, findings: list, name: str) -> None:
             check_element(element, "a bound label (%s)" % plain(element.body)[:20])
 
     for element in doc.styles:
-        found = CSS_MOVES_MARK_RE.search(element.body)
+        # Comments become whitespace before the search (a `/**/` prefix is
+        # not a declaration boundary the regex knows), with newlines kept so
+        # the reported line is the declaration's line in the source.
+        body = strip_css_comments(element.body)
+        found = CSS_MOVES_MARK_RE.search(body)
         if found:
             findings.append(
                 "%s:%d: a CSS `%s` declaration — this checker cannot tell which "
                 "marks it applies to, and one that positions verified geometry "
                 "invalidates every coordinate here. Remove it, or bake the offset "
                 "into the coordinates"
-                % (name, element.line + element.body.count("\n", 0, found.start()),
+                % (name, element.line + body.count("\n", 0, found.start()),
                    found.group("prop").lower())
             )
 

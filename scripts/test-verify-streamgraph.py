@@ -37,6 +37,9 @@ HEAD = """<!DOCTYPE html>
   <desc id="streamgraph-desc">Streamgraph fixture.</desc>
 """
 TAIL = "</svg></body></html>\n"
+# The same head with nothing in the accessible text that names the type, so
+# a file under a non-streamgraph name is in scope only if its markup is.
+PLAIN_HEAD = HEAD.replace("Streamgraph fixture.", "A figure.")
 
 # The shared geometry the shipped example uses: 1.25px per unit about y=230.
 SCALE = 1.25
@@ -287,6 +290,30 @@ def run_cases(h):
         document(figure()
                  + '  <!-- old draft: <path data-layer="ghost" data-values="1,2" '
                    'd="M 0 0 Z"/> -->\n'),
+    )
+
+    # A comment is not markup: an old draft of a layer inside <!-- --> must
+    # not pull a file that is otherwise not a streamgraph into scope, or the
+    # fail-closed rule fires on a perfectly honest line chart.
+    h.expect_out_of_scope(
+        "a data-layer that appears only inside an HTML comment does not claim the file",
+        PLAIN_HEAD
+        + '  <!-- old draft: <path data-layer="ghost" data-values="1,2" '
+          'd="M 0 0 Z"/> -->\n'
+        + '  <path d="M 0 0 L 4 4 Z" fill="#2d3142"/>\n' + TAIL,
+        "example-line-fixture.html",
+    )
+
+    # The other polarity: bytes that say data-layer= in LIVE markup claim the
+    # file even when a broken quote leaves the parser no data-layer attribute
+    # at all. The browser draws no layer; the checker must say so, not skip.
+    h.expect_finding(
+        "a broken-quoted data-layer that is the file's only signal fails closed, not skipped",
+        PLAIN_HEAD
+        + '  <path data-note="x data-layer="Docs" data-values="1,2,3" d="M 0 0 Z"/>\n'
+        + TAIL,
+        r"presents as a streamgraph but declares 0 verifiable layer",
+        name="figure.html",
     )
 
     # The detector must not drag the other example types into scope.
@@ -806,6 +833,49 @@ def run_cases(h):
         HEAD + "<style>.layer {\n  -webkit-transform: translateY(80px);\n}</style>\n"
         + figure() + TAIL,
         r"a CSS `transform` declaration",
+    )
+
+    # A CSS comment is whitespace to the tokenizer, so `/**/transform:` IS
+    # the transform property. The guard's regex allows only whitespace before
+    # the property name, and a comment there was a free pass through every
+    # carrier - inline on the element, inline on an ancestor, and in a rule.
+    h.expect_finding(
+        "a CSS comment before an inline transform on a layer path is not a free pass",
+        document(figure()).replace(
+            '  <path data-layer="Docs"',
+            '  <path style="/**/transform: translateX(80px)" data-layer="Docs"', 1),
+        r"layer 'Docs' carries style=.*\(the transform property\)",
+    )
+
+    h.expect_finding(
+        "a CSS comment before an inline translate on a bound label is not a free pass",
+        document(figure()).replace(
+            '  <text data-period="W01"',
+            '  <text style="/* nudge */translate: 0 40px" data-period="W01"', 1),
+        r"bound label \(W01\) carries style=.*\(the translate property\)",
+    )
+
+    h.expect_finding(
+        "a CSS comment before an ancestor <g>'s inline transform is not a free pass",
+        document('  <g style="/**/transform: translateY(80px)">\n' + figure()
+                 + "  </g>\n"),
+        r"carries an ancestor <g>/<svg> style transform",
+    )
+
+    h.expect_finding(
+        "a CSS comment before a transform declaration in a style block is not a free pass",
+        HEAD + "<style>path { /**/ transform: translateY(40px); }</style>\n"
+        + figure() + TAIL,
+        r"a CSS `transform` declaration",
+    )
+
+    # And the other polarity: a declaration that lives entirely inside a
+    # comment is not a declaration, even when a line break inside the comment
+    # puts `transform:` at what the regex alone would read as a boundary.
+    h.expect_clean(
+        "a transform inside a CSS comment is not read as a declaration",
+        HEAD + "<style>path {\n  /*\n  transform: translateY(40px);\n  */\n"
+        "  fill: #2d3142;\n}</style>\n" + figure() + TAIL,
     )
 
     # First-wins on an ancestor, both polarities: the browser applies the
