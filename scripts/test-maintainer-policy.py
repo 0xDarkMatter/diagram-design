@@ -29,6 +29,8 @@ REQUIRED_COMMANDS = {
     "python3 scripts/test-verify-streamgraph.py",
     "python3 scripts/verify-bump.py --all",
     "python3 scripts/test-verify-bump.py",
+    "python3 scripts/verify-marimekko.py --all",
+    "python3 scripts/test-verify-marimekko.py",
     "python3 scripts/verify-beeswarm.py --all",
     "python3 scripts/test-verify-beeswarm.py",
     "python3 scripts/verify-skin-polarity.py --all",
