@@ -20,7 +20,9 @@ Fourteen drift classes, each of which has shipped before:
 8. Every support path a strict skill bundler can extract from SKILL.md must be
    a literal file shipped inside the skill package.
 9. Import command surfaces must route to the visual-type taxonomy instead of
-   hardcoding a count that becomes stale when a type is added.
+   hardcoding a count that becomes stale when a type is added. README is the
+   same surface by another route — it carries the count in prose a user reads
+   before installing — so it is held to the same rule.
 10. The High-Level reproducibility checklist must agree with its canvas formula
    and retain sequential numbering.
 11. The canonical dark Line example must keep the dark-skin tokens and canvas.
@@ -213,7 +215,8 @@ def check_gallery(errors: list[str]) -> None:
             errors.append(f"gallery tab {name!r} points at a missing example-{name}.html")
     # Parse eyebrow numbers and parent-type bindings from tab buttons.
     # Variants (data-parent-type) may share their declared parent's eyebrow
-    # number; uniqueness is enforced only among independent (non-variant) types.
+    # number; independent (non-variant) types must be unique and form a
+    # contiguous ascending 01..N sequence in document order.
     tab_eyebrows: dict[str, str] = {}  # data-type → eyebrow number
     tab_parents: dict[str, str] = {}   # data-type → data-parent-type
     for m in re.finditer(r'<button([^>]*)>\s*<span class="eyebrow">(\d+)</span>', source):
@@ -226,9 +229,11 @@ def check_gallery(errors: list[str]) -> None:
                 tab_parents[tm.group(1)] = pm.group(1)
     # Enforce uniqueness among independent (non-variant) types.
     seen_eyebrows: dict[str, str] = {}  # eyebrow → first independent type
+    independent_order: list[tuple[str, str]] = []  # (type, eyebrow) in document order
     for t, num in tab_eyebrows.items():
         if t in tab_parents:
             continue
+        independent_order.append((t, num))
         if num in seen_eyebrows:
             errors.append(
                 f"gallery has duplicate eyebrow number {num!r} on independent types "
@@ -236,6 +241,18 @@ def check_gallery(errors: list[str]) -> None:
             )
         else:
             seen_eyebrows[num] = t
+    # Enforce that independent ordinals are contiguous and ascending 01..N
+    # in document order. Uniqueness alone misses insertions that take the next
+    # free number while landing mid-gallery (see #213).
+    if independent_order:
+        expected = [f"{i:02d}" for i in range(1, len(independent_order) + 1)]
+        actual = [num for _, num in independent_order]
+        if actual != expected:
+            found = ", ".join(f"{t}={num}" for t, num in independent_order)
+            errors.append(
+                f"gallery independent eyebrow sequence must be contiguous ascending "
+                f"01..{len(independent_order):02d} in document order; found {found}"
+            )
     # Enforce that each variant's eyebrow matches its declared parent's.
     for t, parent in tab_parents.items():
         if parent not in tab_eyebrows:
@@ -478,12 +495,17 @@ def check_factory_install_surface(errors: list[str], root: Path) -> None:
 # adds a type, and is the one file such a PR has no reason to open. Both import
 # commands were left at 27 while the selection table moved on.
 # The phrasing varies, so match the count rather than the one sentence it went
-# stale in. Two forms carry it: the bare count standing in for the table
-# (`one of the 27`), and a count attached to the taxonomy noun with room for
+# stale in. Four forms carry it: the bare count standing in for the table
+# (`one of the 27`), a count attached to the taxonomy noun with room for
 # adjectives between, in either order (`28 visual types`, `28 supported visual
-# diagram types`, `28 types of visual diagrams`). Those clauses insist on that
-# noun so an unrelated quantity — `accepts 2 file types` — is not rejected by a
-# gate about the visual taxonomy.
+# diagram types`, `28 types of visual diagrams`), a count bound to the noun as
+# a hyphenated modifier (`39-type catalog`), and a count quantifying the whole
+# set (`all 39 diagrams`). The first three insist on that noun so an unrelated
+# quantity — `accepts 2 file types` — is not rejected by a gate about the
+# visual taxonomy. The last two are checked only in a sentence with a nearby
+# visual-taxonomy cue (`catalog`, `gallery`, `render`, `shipped`, and so on),
+# so ordinary prose such as `a 10-type taxonomy` and `all 12 diagrams in the
+# appendix` remains valid while the README's stale phrases stay covered.
 #
 # Every gap is whitespace-tolerant because both commands already wrap the
 # sentence that carried the stale count, so a count can land just after the
@@ -492,16 +514,23 @@ def check_factory_install_surface(errors: list[str], root: Path) -> None:
 #
 # Word-form numerals (`Twenty-eight visual types`) are out of scope; README and
 # the docstring say "numeral" so the gate does not claim more than it checks.
+# README carried one of those (`Thirty-nine visual types`); it is count-free now
+# but nothing here would catch it coming back in words.
+_COUNT_CONTEXT = r"visual|catalog|gallery|render(?:er|ing)?|example|shipped|static|variant"
+_COUNT_SENTENCE = rf"[^.!?\n]*\b(?:{_COUNT_CONTEXT})\b"
 HARDCODED_COUNT_RE = re.compile(
     r"one\s+of\s+(?:the\s+)?\d+\b"
     r"|\b\d+\s+(?:[\w-]+\s+){0,2}?(?:visual|diagram)[\s-]+types?\b"
-    r"|\b\d+\s+types?\s+of\s+(?:[\w-]+\s+){0,2}?diagrams?\b",
+    r"|\b\d+\s+types?\s+of\s+(?:[\w-]+\s+){0,2}?diagrams?\b"
+    rf"|(?={_COUNT_SENTENCE})[^.!?\n]*?\b\d+-type\b"
+    rf"|(?={_COUNT_SENTENCE})[^.!?\n]*?\ball\s+\d+\s+diagrams?\b",
     re.IGNORECASE,
 )
 COUNT_SURFACES = (
     Path("commands/import-drawio.md"),
     Path("commands/import-mermaid.md"),
     Path("commands/import-excalidraw.md"),
+    Path("README.md"),
 )
 
 
